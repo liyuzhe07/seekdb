@@ -6472,7 +6472,7 @@ int ObResolverUtils::resolve_file_format(const ParseNode *node,
                                          ObResolverParams &params)
 {
   int ret = OB_SUCCESS;
-  if (OB_ISNULL(node) || node->num_child_ != 1 || OB_ISNULL(node->children_[0]) ||
+  if (OB_ISNULL(node) || node->num_child_ < 1 || OB_ISNULL(node->children_[0]) ||
       OB_ISNULL(params.session_info_) || OB_ISNULL(params.expr_factory_)) {
     ret = OB_ERR_UNEXPECTED;
   } else {
@@ -6634,6 +6634,31 @@ int ObResolverUtils::resolve_file_format(const ParseNode *node,
       }
       case T_IGNORE_LAST_EMPTY_COLUMN: {
         format.csv_format_.ignore_last_empty_col_ = node->children_[0]->value_;
+        break;
+      }
+      case T_COPY_HEADER: {
+        // COPY (...) TO 'p' (header)
+        ObString opt_name(node->children_[0]->str_len_, node->children_[0]->str_value_);
+        if (!opt_name.case_compare_equal(ObString::make_string("header"))) {
+          ret = OB_INVALID_ARGUMENT;
+          LOG_USER_ERROR(OB_INVALID_ARGUMENT, "unknown copy option");
+        } else {
+          format.csv_format_.with_header_ = true;
+        }
+        break;
+      }
+      case T_COPY_NULLSTR: {
+        // COPY (...) TO 'p' (nullstr 'X')
+        ObString opt_name(node->children_[0]->str_len_, node->children_[0]->str_value_);
+        if (!opt_name.case_compare_equal(ObString::make_string("nullstr"))) {
+          ret = OB_INVALID_ARGUMENT;
+          LOG_USER_ERROR(OB_INVALID_ARGUMENT, "unknown copy option");
+        } else if (OB_ISNULL(node->children_[1])) {
+          ret = OB_INVALID_ARGUMENT;
+        } else {
+          format.csv_format_.null_string_.assign_ptr(node->children_[1]->str_value_,
+                                                    static_cast<int32_t>(node->children_[1]->str_len_));
+        }
         break;
       }
       default: {

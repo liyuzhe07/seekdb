@@ -2278,6 +2278,9 @@ typedef enum ObItemType
   T_FILE_SCAN_TABLE = 4921,
   T_FILE_LIST_TABLE = 4922,
   T_FILE_SCHEMA_TABLE = 4923,
+  T_COPY_HEADER = 4924,
+  T_COPY_NULLSTR = 4925,
+  T_DESCRIBE_COLUMNS = 4926,
   T_MAX //Attention: add a new type before T_MAX
 } ObItemType;
 

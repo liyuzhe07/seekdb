@@ -41,7 +41,6 @@
 #include "../../../src/sql/parser/sql_parser_base.h"
 
 #define GEN_EXPLAN_STMT(no_use, explain_stmt, explain_type, display_type, stmt, into_table, set_statement_id) \
-  (void)(no_use); \
   ParseNode *type_node = NULL; \
   ParseNode *display_node = NULL; \
   if (0 != explain_type) { \
@@ -49,6 +48,9 @@
   } \
   if (0 != display_type) { \
     malloc_terminal_node(display_node, result->malloc_pool_, display_type); \
+  } else if (NULL != (no_use)) { \
+    /* DESCRIBE/DESC marker, used to produce column metadata for file tables */ \
+    display_node = (no_use); \
   } \
   malloc_non_terminal_node(explain_stmt, result->malloc_pool_, T_EXPLAIN, 5, \
                            type_node, display_node, into_table, set_statement_id, stmt);
@@ -373,6 +375,7 @@ END_P SET_VAR DELIMITER
 //-----------------------------non_reserved keyword end---------------------------------------------
 %type <node> sql_stmt stmt_list stmt opt_end_p
 %type <node> select_stmt update_stmt delete_stmt
+%type <node> copy_stmt copy_format_list copy_format_item
 %type <node> insert_stmt single_table_insert values_clause dml_table_name
 %type <node> create_table_stmt create_table_like_stmt fork_table_stmt fork_database_stmt diff_table_stmt merge_table_stmt opt_table_option_list table_option_list table_option table_option_list_space_seperated parallel_option lob_storage_clause lob_storage_parameter lob_storage_parameters lob_chunk_size
 %type <node> index_or_heap
@@ -558,6 +561,7 @@ opt_end_p:
 /* only preparable statement will set question mark size */
 stmt:
     select_stmt             { $$ = $1; question_mark_issue($$, result); }
+  | copy_stmt               { $$ = $1; question_mark_issue($$, result); }
   | insert_stmt             { $$ = $1; question_mark_issue($$, result); }
   | create_table_stmt       {
     $$ = $1;
@@ -8905,6 +8909,67 @@ LIMIT limit_expr OFFSET limit_expr
 }
 ;
 
+// COPY (query) TO 'path' (format csv, header, nullstr 'X')
+// desugared into SELECT ... INTO OUTFILE FORMAT(...)
+copy_stmt:
+COPY '(' select_stmt ')' TO STRING_VALUE '(' copy_format_list ')'
+{
+  ParseNode *format_list = NULL;
+  ParseNode *into_node = NULL;
+  merge_nodes(format_list, result, T_EXTERNAL_FILE_FORMAT, $8);
+  if (NULL != format_list && NULL != $3
+      && T_SELECT == $3->type_ && $3->num_child_ > PARSE_SELECT_INTO) {
+    malloc_non_terminal_node(into_node, result->malloc_pool_, T_INTO_OUTFILE, 3, $6, format_list, NULL);
+    if (NULL != into_node) {
+      $3->children_[PARSE_SELECT_INTO] = into_node;
+    }
+  }
+  $$ = $3;
+}
+;
+
+copy_format_list:
+copy_format_item
+{
+  $$ = $1;
+}
+| copy_format_list ',' copy_format_item
+{
+  malloc_non_terminal_node($$, result->malloc_pool_, T_LINK_NODE, 2, $1, $3);
+}
+;
+
+copy_format_item:
+FORMAT NAME_OB
+{
+  ParseNode *type_node = NULL;
+  ParseNode *comma_node = NULL;
+  ParseNode *delim_node = NULL;
+  if (NULL != $2) {
+    malloc_non_terminal_node(type_node, result->malloc_pool_, T_EXTERNAL_FILE_FORMAT_TYPE, 1, $2);
+  }
+  malloc_terminal_node(comma_node, result->malloc_pool_, T_VARCHAR);
+  if (NULL != comma_node) {
+    comma_node->str_value_ = ",";
+    comma_node->str_len_ = 1;
+  }
+  malloc_non_terminal_node(delim_node, result->malloc_pool_, T_FIELD_TERMINATED_STR, 1, comma_node);
+  if (NULL != delim_node) {
+    delim_node->str_value_ = ",";
+    delim_node->str_len_ = 1;
+  }
+  malloc_non_terminal_node($$, result->malloc_pool_, T_LINK_NODE, 2, type_node, delim_node);
+}
+| NAME_OB
+{
+  malloc_non_terminal_node($$, result->malloc_pool_, T_COPY_HEADER, 1, $1);
+}
+| NAME_OB STRING_VALUE
+{
+  malloc_non_terminal_node($$, result->malloc_pool_, T_COPY_NULLSTR, 2, $1, $2);
+}
+;
+
 into_clause:
 INTO OUTFILE STRING_VALUE opt_charset field_opt line_opt file_opt
 {
@@ -12336,8 +12401,14 @@ explain_or_desc relation_factor opt_desc_column_option
 
 explain_or_desc:
 EXPLAIN {$$ = NULL;}
-| DESCRIBE {$$ = NULL;}
-| DESC  {$$ = NULL;}
+| DESCRIBE
+{
+  malloc_terminal_node($$, result->malloc_pool_, T_DESCRIBE_COLUMNS);
+}
+| DESC
+{
+  malloc_terminal_node($$, result->malloc_pool_, T_DESCRIBE_COLUMNS);
+}
 ;
 
 explainable_stmt:
