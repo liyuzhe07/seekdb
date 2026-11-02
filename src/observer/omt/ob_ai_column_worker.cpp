@@ -40,6 +40,7 @@
 #include "share/schema/ob_table_schema.h"
 #include "sql/engine/expr/ob_expr_ai/ob_ai_func_utils.h"
 #include "sql/resolver/ddl/ob_ai_column_def.h"
+#include "sql/parser/ob_item_type.h"
 
 namespace oceanbase
 {
@@ -130,6 +131,7 @@ int call_completion_model(ObIAllocator &alloc,
                           const ObString &model_name,
                           const ObString &system_prompt,
                           const ObString &content,
+                          const int64_t ai_func_type,
                           ObString &result)
 {
   int ret = OB_SUCCESS;
@@ -147,7 +149,12 @@ int call_completion_model(ObIAllocator &alloc,
     ObString system_str = system_prompt;
     ObString content_str = content;
     ObAIFuncModel model(alloc, *info, endpoint_info);
-    if (OB_FAIL(model.call_completion_with_system(system_str, content_str, nullptr, result))) {
+    if (T_FUN_SYS_AI_EMBED == ai_func_type) {
+      // a vector column is produced by the embedding API, not by chat completions
+      if (OB_FAIL(model.call_dense_embedding(content_str, nullptr, result))) {
+        LOG_WARN("ai column embedding call failed", K(ret), K(model_name));
+      }
+    } else if (OB_FAIL(model.call_completion_with_system(system_str, content_str, nullptr, result))) {
     }
   }
   return ret;
@@ -553,7 +560,7 @@ int ObAiColumnWorker::process_group(common::ObIAllocator &alloc, common::ObIArra
     const char *hint = ai_type_hint(ctx->def_.result_type_);
     const ObString system_prompt(static_cast<int32_t>(strlen(hint)), hint);
     int tmp_ret = call_completion_model(alloc, ctx->def_.model_name_, system_prompt,
-                                        inputs.at(i), result_text);
+                                        inputs.at(i), ctx->def_.ai_func_type_, result_text);
     if (OB_SUCCESS == tmp_ret) {
       ctx->failed_ = false;
       ctx->result_text_ = result_text;
