@@ -22,19 +22,29 @@
 
 #include "sql/engine/dml/ob_ai_column_dml.h"
 
+#include "common/mysqlclient/ob_mysql_proxy.h"
+#include "common/mysqlclient/ob_mysql_result.h"
+#include "lib/allocator/page_arena.h"
 #include "lib/atomic/ob_atomic.h"
 #include "lib/string/ob_sql_string.h"
 #include "lib/time/ob_time_utility.h"
+#include "lib/utility/ob_macro_utils.h"
 #include "lib/utility/utility.h"
 #include "share/inner_table/ob_inner_table_schema.h"
+#include "share/ob_server_struct.h"
 #include "share/schema/ob_schema_getter_guard.h"
 #include "share/schema/ob_table_schema.h"
 #include "share/schema/ob_column_schema.h"
+#include "share/system_variable/ob_sys_var_class_type.h"
 #include "sql/engine/dml/ob_table_modify_op.h"
 #include "sql/ob_sql_context.h"
+#include "sql/ob_sql_utils.h"
 #include "share/schema/ob_schema_struct.h"
 #include "sql/engine/ob_exec_context.h"
 #include "sql/resolver/ddl/ob_ai_column_def.h"
+#include "sql/resolver/dml/ob_dml_stmt.h"
+#include "sql/resolver/dml/ob_select_stmt.h"
+#include "sql/resolver/ob_stmt.h"
 #include "sql/session/ob_sql_session_info.h"
 
 namespace oceanbase
@@ -203,6 +213,144 @@ int make_request_id(char *buf, const int64_t buf_len)
   const uint64_t id = ATOMIC_AAF(&seq, 1);
   return snprintf(buf, static_cast<size_t>(buf_len), "%lx_%lx",
                   static_cast<uint64_t>(ObTimeUtility::current_time()), id);
+}
+
+// ---------------------------------------------------------------------------
+// Strict reads
+// ---------------------------------------------------------------------------
+const char AI_STATE_READY[] = "READY";
+
+struct AiStrictTarget
+{
+  AiStrictTarget()
+    : table_id_(OB_INVALID_ID),
+      column_id_(OB_INVALID_ID),
+      db_name_(),
+      table_name_(),
+      state_name_()
+  {}
+  uint64_t table_id_;
+  uint64_t column_id_;
+  common::ObString db_name_;
+  common::ObString table_name_;
+  common::ObString state_name_;
+};
+
+// Walks the resolved statement and records every AI column it actually reads.
+// Derived tables and subqueries are visited through get_child_stmts, so a
+// reference buried in a subquery still makes the whole statement strict.
+int collect_strict_targets(share::schema::ObSchemaGetterGuard &schema_guard,
+                           common::ObIAllocator &alloc,
+                           const ObDMLStmt &stmt,
+                           common::ObIArray<AiStrictTarget> &targets)
+{
+  int ret = OB_SUCCESS;
+  const common::ObIArray<TableItem *> &table_items = stmt.get_table_items();
+  for (int64_t i = 0; OB_SUCC(ret) && i < table_items.count(); ++i) {
+    const TableItem *item = table_items.at(i);
+    const ObTableSchema *table_schema = NULL;
+    const ObDatabaseSchema *db_schema = NULL;
+    if (OB_ISNULL(item)) {
+      ret = OB_ERR_UNEXPECTED;
+    } else if (TableItem::BASE_TABLE != item->type_) {
+      // a derived table contributes no column of its own, its child statement
+      // is walked below
+    } else if (OB_FAIL(schema_guard.get_table_schema(item->ref_id_, table_schema))) {
+      LOG_WARN("failed to get table schema", K(ret), K(item->ref_id_));
+    } else if (OB_ISNULL(table_schema) || !table_has_ai_column(*table_schema)) {
+    } else if (OB_FAIL(schema_guard.get_database_schema(table_schema->get_database_id(),
+                                                        db_schema))) {
+      LOG_WARN("failed to get database schema", K(ret), K(table_schema->get_database_id()));
+    } else if (OB_ISNULL(db_schema)) {
+      ret = OB_ERR_UNEXPECTED;
+    } else {
+      common::ObSEArray<AiRtDef *, 4> defs;
+      const common::ObIArray<ColumnItem> &column_items = stmt.get_column_items();
+      if (OB_FAIL(collect_ai_defs(alloc, *table_schema, defs))) {
+        LOG_WARN("failed to collect ai column definitions", K(ret), K(item->ref_id_));
+      }
+      for (int64_t k = 0; OB_SUCC(ret) && k < defs.count(); ++k) {
+        const AiRtDef *def = defs.at(k);
+        bool referenced = false;
+        if (OB_ISNULL(def)) {
+          ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("ai column definition is null", K(ret));
+        }
+        for (int64_t c = 0; OB_SUCC(ret) && !referenced && c < column_items.count(); ++c) {
+          referenced = (column_items.at(c).table_id_ == item->table_id_
+                        && column_items.at(c).column_id_ == def->result_column_id_);
+        }
+        if (OB_FAIL(ret) || !referenced) {
+        } else {
+          AiStrictTarget target;
+          bool duplicated = false;
+          target.table_id_ = table_schema->get_table_id();
+          target.column_id_ = def->result_column_id_;
+          target.db_name_ = db_schema->get_database_name_str();
+          target.table_name_ = table_schema->get_table_name_str();
+          target.state_name_ = def->state_name_;
+          for (int64_t d = 0; !duplicated && d < targets.count(); ++d) {
+            duplicated = (targets.at(d).table_id_ == target.table_id_
+                          && targets.at(d).column_id_ == target.column_id_);
+          }
+          if (!duplicated && OB_FAIL(targets.push_back(target))) {
+            LOG_WARN("failed to push back strict target", K(ret));
+          }
+        }
+      }
+    }
+  }
+
+  common::ObSEArray<ObSelectStmt *, 4> child_stmts;
+  if (OB_SUCC(ret) && OB_FAIL(stmt.get_child_stmts(child_stmts))) {
+    LOG_WARN("failed to get child statements", K(ret));
+  }
+  for (int64_t i = 0; OB_SUCC(ret) && i < child_stmts.count(); ++i) {
+    if (OB_ISNULL(child_stmts.at(i))) {
+      ret = OB_ERR_UNEXPECTED;
+    } else if (OB_FAIL(collect_strict_targets(schema_guard, alloc, *child_stmts.at(i), targets))) {
+    }
+  }
+  return ret;
+}
+
+// The task table is emptied once a request settles, a FAILED column therefore
+// looks clean there. The hidden state column is the only durable source of
+// truth, so probe it instead.
+int probe_unfinished_target(const AiStrictTarget &target, bool &unfinished)
+{
+  int ret = OB_SUCCESS;
+  common::ObSqlString sql;
+  unfinished = false;
+  if (OB_ISNULL(GCTX.sql_proxy_)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("sql proxy is not ready", K(ret));
+  } else if (OB_FAIL(sql.append_fmt("SELECT 1 FROM `%.*s`.`%.*s` WHERE IFNULL(`%.*s`, '') <> '%s' LIMIT 1",
+                                    target.db_name_.length(), target.db_name_.ptr(),
+                                    target.table_name_.length(), target.table_name_.ptr(),
+                                    target.state_name_.length(), target.state_name_.ptr(),
+                                    AI_STATE_READY))) {
+    LOG_WARN("failed to build strict read probe", K(ret));
+  } else {
+    SMART_VAR(common::ObMySQLProxy::MySQLResult, res) {
+      common::sqlclient::ObMySQLResult *result = NULL;
+      if (OB_FAIL(GCTX.sql_proxy_->read(res, sql.ptr()))) {
+        LOG_WARN("failed to probe ai column state", K(ret), "sql", sql.ptr());
+      } else if (OB_ISNULL(result = res.get_result())) {
+        ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("probe result is null", K(ret), "sql", sql.ptr());
+      } else if (OB_FAIL(result->next())) {
+        if (OB_ITER_END == ret) {
+          ret = OB_SUCCESS;
+        } else {
+          LOG_WARN("failed to read probe result", K(ret), "sql", sql.ptr());
+        }
+      } else {
+        unfinished = true;
+      }
+    }
+  }
+  return ret;
 }
 
 } // anonymous namespace
@@ -435,6 +583,50 @@ int ObAiColumnDml::process(ObTableModifyOp &op,
     }
   }
   LOG_INFO("[AI_PROBE] process end", K(ret), "event", (int)event, K(table_id));
+  return ret;
+}
+
+int ObAiColumnDml::check_strict_read(ObSQLSessionInfo &session,
+                                     ObExecContext &exec_ctx,
+                                     ObStmt *stmt)
+{
+  int ret = OB_SUCCESS;
+  bool strict_read = false;
+  ObDMLStmt *dml_stmt = NULL;
+  ObSqlCtx *sql_ctx = exec_ctx.get_sql_ctx();
+  if (session.is_inner() || ObSQLSessionInfo::INNER_SESSION == session.get_session_type()
+      || session.is_in_ai_column_maintenance()
+      || ObSQLUtils::is_ai_column_nested_sql(&exec_ctx)) {
+    // maintenance and background statements drive the AI work themselves, they
+    // must never be blocked by it
+  } else if (OB_FAIL(session.get_bool_sys_var(share::SYS_VAR_AI_COLUMN_STRICT_READ,
+                                              strict_read))) {
+    LOG_WARN("failed to read ai_column_strict_read", K(ret));
+  } else if (!strict_read || OB_ISNULL(stmt)
+             || OB_ISNULL(sql_ctx) || OB_ISNULL(sql_ctx->schema_guard_)) {
+  } else if (NULL == (dml_stmt = dynamic_cast<ObDMLStmt *>(stmt))) {
+    // DDL and utility statements do not read AI results
+  } else {
+    ObArenaAllocator alloc("AiStrictRead");
+    common::ObSEArray<AiStrictTarget, 4> targets;
+    if (OB_FAIL(collect_strict_targets(*sql_ctx->schema_guard_, alloc, *dml_stmt, targets))) {
+      LOG_WARN("failed to collect referenced ai columns", K(ret));
+    }
+    for (int64_t i = 0; OB_SUCC(ret) && i < targets.count(); ++i) {
+      bool unfinished = false;
+      if (OB_FAIL(probe_unfinished_target(targets.at(i), unfinished))) {
+        LOG_WARN("failed to probe ai column state", K(ret));
+      } else if (unfinished) {
+        ret = OB_AI_COLUMN_UNFINISHED_TASK;
+        LOG_USER_ERROR(OB_AI_COLUMN_UNFINISHED_TASK,
+                       static_cast<int64_t>(targets.at(i).table_id_),
+                       static_cast<int64_t>(targets.at(i).column_id_));
+        LOG_WARN("ai column has unfinished tasks", K(ret),
+                 "table_id", targets.at(i).table_id_,
+                 "column_id", targets.at(i).column_id_);
+      }
+    }
+  }
   return ret;
 }
 

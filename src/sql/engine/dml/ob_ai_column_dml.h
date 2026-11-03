@@ -36,6 +36,9 @@ namespace sql
 {
 
 class ObTableModifyOp;
+class ObStmt;
+class ObExecContext;
+class ObSQLSessionInfo;
 
 // True when the table carries at least one AI column bookkeeping column.
 bool table_has_ai_column(const share::schema::ObTableSchema &table_schema);
@@ -52,6 +55,16 @@ public:
   static int process_insert(ObTableModifyOp &op, const ObInsCtDef &ctdef);
   static int process_update(ObTableModifyOp &op, const ObUpdCtDef &ctdef);
   static int process_delete(ObTableModifyOp &op, const ObDelCtDef &ctdef);
+
+  // Strict reads. When ai_column_strict_read is on, a user statement that
+  // references an AI column whose results are not all READY is rejected with
+  // OB_AI_COLUMN_UNFINISHED_TASK. Called right after resolve so a rejected
+  // write never reaches the executor. Only the AI columns the statement
+  // actually references are probed, and the probe is column-wide rather than
+  // limited to the rows the statement selects.
+  static int check_strict_read(ObSQLSessionInfo &session,
+                               ObExecContext &exec_ctx,
+                               ObStmt *stmt);
 
 private:
   enum DmlEvent
