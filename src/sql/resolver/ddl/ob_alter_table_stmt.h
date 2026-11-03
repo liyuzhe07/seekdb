@@ -107,6 +107,20 @@ public:
     alter_table_arg_.lock_session_create_ts_ = create_ts;
   }
   void set_lock_priority();
+
+  // ALTER TABLE ... RETRY AI COLUMN is a data operation rather than a schema
+  // change: the resolver records the target definition and the already
+  // rewritten predicate, and the executor replays them instead of sending the
+  // DDL RPC.
+  bool is_ai_column_retry() const { return is_ai_column_retry_; }
+  const ObAiColumnDef &get_ai_retry_def() const { return ai_retry_def_; }
+  const common::ObString &get_ai_retry_predicate() const { return ai_retry_predicate_; }
+  void set_ai_column_retry(const ObAiColumnDef &def, const common::ObString &predicate)
+  {
+    is_ai_column_retry_ = true;
+    ai_retry_def_ = def;
+    ai_retry_predicate_ = predicate;
+  }
 private:
   common::ObSEArray<ObAiColumnDef, 4> ai_column_defs_;
   obcall::ObAlterTableArg alter_table_arg_;
@@ -118,6 +132,9 @@ private:
   obcall::ObAlterTriggerArg tg_arg_;
   uint64_t alter_table_action_count_;
   obcall::ObExchangePartitionArg exchange_partition_arg_;
+  bool is_ai_column_retry_;
+  ObAiColumnDef ai_retry_def_;
+  common::ObString ai_retry_predicate_;
 };
 
 inline int ObAlterTableStmt::set_tz_info_wrap(const common::ObTimeZoneInfoWrap &tz_info_wrap)

@@ -24,7 +24,7 @@ namespace oceanbase
 {
 namespace share
 {
-namespace schema { class ObTableSchema; }
+namespace schema { class ObTableSchema; class ObSchemaGetterGuard; }
 }
 namespace sql
 {
@@ -45,6 +45,14 @@ public:
                                 const share::schema::ObTableSchema *table_schema = NULL);
   // Removes every definition and pending task of a dropped table.
   static int drop_ai_columns(const uint64_t table_id);
+  // ALTER TABLE ... RETRY AI COLUMN: re-queues the rows selected by the already
+  // rewritten predicate. The matching rows are collected before anything is
+  // invalidated, otherwise a "status = 'READY'" predicate would see the PENDING
+  // state its own UPDATE just wrote and queue nothing.
+  static int retry_ai_column(share::schema::ObSchemaGetterGuard &schema_guard,
+                             const share::schema::ObTableSchema &table_schema,
+                             const ObAiColumnDef &def,
+                             const common::ObString &predicate);
 };
 
 } // namespace sql

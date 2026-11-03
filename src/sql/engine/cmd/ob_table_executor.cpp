@@ -772,6 +772,25 @@ int ObAlterTableExecutor::execute(ObExecContext &ctx, ObAlterTableStmt &stmt)
   OV (OB_NOT_NULL(task_exec_ctx = GET_SQL_EXECUTOR_CTX(ctx)), OB_NOT_INIT);
   if (OB_FAIL(ret)) {
     // do nothing
+  } else if (stmt.is_ai_column_retry()) {
+    // RETRY AI COLUMN re-queues rows instead of changing the schema, so it never
+    // reaches the DDL RPC and never bumps the schema version.
+    const uint64_t table_id = alter_table_arg.alter_table_schema_.get_table_id();
+    ObSchemaGetterGuard *schema_guard = ctx.get_sql_ctx()->schema_guard_;
+    const ObTableSchema *table_schema = NULL;
+    if (OB_ISNULL(schema_guard)) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("schema guard is null", K(ret));
+    } else if (OB_FAIL(schema_guard->get_table_schema(table_id, table_schema))) {
+      LOG_WARN("failed to get table schema", K(ret), K(table_id));
+    } else if (OB_ISNULL(table_schema)) {
+      ret = OB_TABLE_NOT_EXIST;
+      LOG_WARN("table schema is null", K(ret), K(table_id));
+    } else if (OB_FAIL(ObAiColumnDdlUtil::retry_ai_column(*schema_guard, *table_schema,
+                                                          stmt.get_ai_retry_def(),
+                                                          stmt.get_ai_retry_predicate()))) {
+      LOG_WARN("failed to retry ai column", K(ret), K(table_id));
+    }
   } else if (stmt.is_alter_triggers()) {
     if (stmt.get_tg_arg().trigger_infos_.count() > 0) {
       stmt.get_tg_arg().ddl_stmt_str_ = first_stmt;

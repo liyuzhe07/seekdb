@@ -333,7 +333,7 @@ END_P SET_VAR DELIMITER
         QUANTIFIER_TABLE QUARTER QUERY QUEUE_TIME QUICK
 
         RECOVER REDUNDANT REFRESH RELAY RELAYLOG RELAY_LOG_FILE RELAY_LOG_POS RELAY_THREAD RELOAD REMOVE
-        REPEATABLE RESET RESPECT RESTART RESTORE RESUME RETURNED_SQLSTATE RETURNS RETURNING REVERSE
+        REPEATABLE RESET RESPECT RESTART RESTORE RESUME RETRY RETURNED_SQLSTATE RETURNS RETURNING REVERSE
         REWRITE ROLLBACK ROLLUP ROUTINE ROW ROWID ROW_COUNT ROW_FORMAT ROWS RTREE
         RUN RECYCLEBIN REPLICATION ROTATE ROW_NUMBER RUDUNDANT RECURSIVE RANDOM REDO_TRANSPORT_OPTIONS
         RANK READ_ONLY RECOVERY REJECT ROLE
@@ -498,6 +498,7 @@ END_P SET_VAR DELIMITER
 %type <node> skip_index_type opt_skip_index_type_list
 %type <node> vec_index_params vec_index_param vec_index_param_value opt_with_vector_index_parameters
 %type <node> opt_ai_column_options ai_column_option_list ai_column_option ai_column_option_value
+%type <node> opt_ai_retry_where_clause
 %type <node> json_table_expr unnest_expr mock_jt_on_error_on_empty jt_column_list json_table_column_def
 %type <node> json_table_ordinality_column_def json_table_exists_column_def json_table_value_column_def json_table_nested_column_def
 %type <node> opt_value_on_empty_or_error_or_mismatch opt_on_mismatch
@@ -14749,6 +14750,29 @@ DROP CONSTRAINT constraint_name
   (void)($3);
   $$ = NULL;
 }
+| RETRY AI COLUMN column_name opt_ai_retry_where_clause
+{
+  (void)($2);
+  (void)($3);
+  malloc_non_terminal_node($$, result->malloc_pool_, T_ALTER_AI_COLUMN_RETRY, 2, $4, $5);
+}
+;
+
+opt_ai_retry_where_clause:
+/* EMPTY */
+{
+  $$ = NULL;
+}
+| WHERE expr
+{
+  ParseNode *predicate_node = NULL;
+  malloc_terminal_node(predicate_node, result->malloc_pool_, T_VARCHAR);
+  // The predicate is kept verbatim so the executor can replay it against the
+  // table. Backticks survive, and they are what tells STATUS the pseudo column
+  // apart from a user column of the same name.
+  dup_expr_string(predicate_node, result, @2.first_column, @2.last_column);
+  $$ = predicate_node;
+}
 ;
 
 algorithm_opt:
@@ -18022,6 +18046,7 @@ ACCOUNT
 |       RESTART
 |       RESTORE
 |       RESUME
+|       RETRY
 |       RETURNED_SQLSTATE
 |       RETURNING
 |       RETURNS
