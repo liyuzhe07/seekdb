@@ -68,7 +68,12 @@ int ObFileScanOp::open_scan()
     columns.push_back(column);
   }
   for (int64_t i = 0; OB_SUCC(ret) && i < file_spec().output_column_idxs_.count(); ++i) {
-    projected_column_idxs.push_back(file_spec().output_column_idxs_.at(i));
+    const int64_t column_idx = file_spec().output_column_idxs_.at(i);
+    if (column_idx >= 0 && column_idx < file_spec().file_column_names_.count()) {
+      projected_column_idxs.push_back(column_idx);
+    } else {
+      LOG_WARN("skip unknown file column", K(column_idx), K(i));
+    }
   }
   if (OB_SUCC(ret) && OB_FAIL(reader_.open(
         std::string(file_spec().file_path_.ptr(), file_spec().file_path_.length()),
@@ -221,32 +226,15 @@ int ObFileScanOp::get_next_list_row()
 {
   int ret = OB_SUCCESS;
   struct dirent *entry = nullptr;
-  struct stat entry_stat;
   while (OB_SUCC(ret) && OB_NOT_NULL(entry = readdir(directory_))) {
     if (0 == strcmp(entry->d_name, ".") || 0 == strcmp(entry->d_name, "..")) {
       continue;
     }
-    if (0 != fstatat(dirfd(directory_), entry->d_name, &entry_stat, AT_SYMLINK_NOFOLLOW)) {
-      continue;
-    }
     const std::string directory_path(file_spec().file_path_.ptr(), file_spec().file_path_.length());
     const std::string full_path = directory_path + "/" + entry->d_name;
-    ObFileFormat format = ObFileFormat::INVALID;
-    const bool queryable = S_ISREG(entry_stat.st_mode)
-                           && OB_SUCCESS == ObFileScanUtils::detect_format(full_path, format);
-    reset_file_scan_op_cells(cells_, 6);
+    reset_file_scan_op_cells(cells_, 1);
     cells_[0].is_null_ = false;
-    cells_[0].string_value_ = entry->d_name;
-    cells_[1].is_null_ = false;
-    cells_[1].string_value_ = full_path;
-    cells_[2].is_null_ = false;
-    cells_[2].string_value_ = queryable ? ObFileScanUtils::format_name(format) : "unknown";
-    cells_[3].is_null_ = false;
-    cells_[3].int_value_ = static_cast<int64_t>(entry_stat.st_size);
-    cells_[4].is_null_ = false;
-    cells_[4].datetime_value_ = static_cast<int64_t>(entry_stat.st_mtime) * 1000000L;
-    cells_[5].is_null_ = false;
-    cells_[5].bool_value_ = queryable;
+    cells_[0].string_value_ = full_path;
     break;
   }
   if (OB_SUCC(ret) && OB_ISNULL(entry)) {

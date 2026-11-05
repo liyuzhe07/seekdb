@@ -4310,12 +4310,8 @@ int ObDMLResolver::resolve_file_table_item(const ParseNode &parse_tree,
       } else if (OB_FAIL(append_file_column(*allocator_, file_def->columns_, "nullable", ObFileColumnType::BOOLEAN))) {
       }
     } else if (OB_SUCC(ret)) {
-      if (OB_FAIL(append_file_column(*allocator_, file_def->columns_, "file", ObFileColumnType::VARCHAR, false, 1024))) {
-      } else if (OB_FAIL(append_file_column(*allocator_, file_def->columns_, "file_path", ObFileColumnType::VARCHAR, false, 4096))) {
-      } else if (OB_FAIL(append_file_column(*allocator_, file_def->columns_, "file_format", ObFileColumnType::VARCHAR, false, 16))) {
-      } else if (OB_FAIL(append_file_column(*allocator_, file_def->columns_, "file_size", ObFileColumnType::BIGINT))) {
-      } else if (OB_FAIL(append_file_column(*allocator_, file_def->columns_, "modified_time", ObFileColumnType::DATETIME))) {
-      } else if (OB_FAIL(append_file_column(*allocator_, file_def->columns_, "queryable", ObFileColumnType::BOOLEAN))) {
+      // A glob result is a single column holding the path of every matched file.
+      if (OB_FAIL(append_file_column(*allocator_, file_def->columns_, "file", ObFileColumnType::VARCHAR, false, 4096))) {
       }
     }
   }
@@ -7842,6 +7838,9 @@ int ObDMLResolver::resolve_file_scan_column_items(const TableItem &table_item,
           meta.set_collation_type(session_info_->get_local_collation_connection());
           meta.set_collation_level(CS_LEVEL_IMPLICIT);
           accuracy.set_length(static_cast<ObLength>(std::max<int64_t>(1, column.max_length_)));
+        } else if (ObDateTimeType == obj_type) {
+          // The timestamp of a file is kept with second precision.
+          accuracy.set_scale(0);
         }
         if (OB_FAIL(resolve_function_table_column_item(table_item,
                                                        meta,

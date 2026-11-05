@@ -5629,11 +5629,25 @@ int ObStaticEngineCG::generate_spec(ObLogFileScan &op, ObFileScanSpec &spec,
         ret = OB_ERR_UNEXPECTED;
       } else if (column->table_id_ == op.get_table_id()
                  && column->expr_->is_explicited_reference()) {
-        if (OB_FAIL(mark_expr_self_produced(column->expr_))) {
+        // The position of the column inside the file is looked up by its name:
+        // the column id of a column item is not necessarily the offset of the
+        // column inside the file.
+        const ObString column_name(static_cast<int32_t>(column->column_name_.length()),
+                                   column->column_name_.data());
+        int64_t file_column_idx = -1;
+        for (int64_t j = 0; -1 == file_column_idx && j < file_def->columns_.count(); ++j) {
+          const ObString file_column_name(static_cast<int32_t>(file_def->columns_.at(j).column_name_.length()),
+                                           file_def->columns_.at(j).column_name_.data());
+          if (0 == column_name.compare(file_column_name)) {
+            file_column_idx = j;
+          }
+        }
+        if (-1 == file_column_idx) {
+          // The column is not part of the file, it can not be read from it.
+        } else if (OB_FAIL(mark_expr_self_produced(column->expr_))) {
         } else if (OB_FAIL(generate_rt_expr(*column->expr_, rt_expr))) {
         } else if (OB_FAIL(spec.column_exprs_.push_back(rt_expr))) {
-        } else if (OB_FAIL(spec.output_column_idxs_.push_back(
-                     static_cast<int64_t>(column->column_id_ - OB_APP_MIN_COLUMN_ID)))) {
+        } else if (OB_FAIL(spec.output_column_idxs_.push_back(file_column_idx))) {
         }
       }
     }
