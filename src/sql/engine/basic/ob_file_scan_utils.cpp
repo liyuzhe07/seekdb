@@ -294,7 +294,7 @@ bool is_blank_line(const std::string &line)
 // Reset the cells of a row but keep the string buffers of the previous row.
 // The projected string values are handed to the datum of the column
 // expression, so the buffer must stay valid after the row is consumed.
-void reset_file_cells(std::vector<ObFileCell> &cells, const size_t count)
+void reset_file_scan_reader_cells(std::vector<ObFileCell> &cells, const size_t count)
 {
   if (cells.size() != count) {
     cells.assign(count, ObFileCell());
@@ -1240,7 +1240,7 @@ int ObFileScanReader::get_next_csv_row(std::vector<ObFileCell> &cells)
   int ret = OB_SUCCESS;
   std::vector<std::string> fields;
   bool has_record = false;
-  reset_file_cells(cells, columns_.size());
+  reset_file_scan_reader_cells(cells, columns_.size());
   if (!csv_header_read_) {
     ret = OB_NOT_INIT;
   } else if (OB_FAIL(read_csv_record(*stream_, fields, has_record))) {
@@ -1282,7 +1282,7 @@ int ObFileScanReader::get_next_jsonl_row(std::vector<ObFileCell> &cells)
     ret = OB_ITER_END;
   } else {
     std::vector<ParsedJsonField> fields;
-    reset_file_cells(cells, columns_.size());
+    reset_file_scan_reader_cells(cells, columns_.size());
     if (OB_FAIL(parse_json_object(line, fields))) {
       LOG_WARN("failed to parse jsonl row", K(ret), K(current_row_number_));
     } else {

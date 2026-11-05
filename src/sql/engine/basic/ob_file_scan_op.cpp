@@ -33,7 +33,7 @@ namespace
 // Reset the cells of the next row but keep the string buffers of the previous
 // row: the string values are handed over to the datum of the column
 // expression, so the buffer must stay valid after the row has been consumed.
-void reset_op_cells(std::vector<ObFileCell> &cells, const size_t count)
+void reset_file_scan_op_cells(std::vector<ObFileCell> &cells, const size_t count)
 {
   if (cells.size() != count) {
     cells.assign(count, ObFileCell());
@@ -194,7 +194,7 @@ int ObFileScanOp::get_next_schema_row()
                 != file_spec().source_column_nullable_.count()) {
     ret = OB_ERR_UNEXPECTED;
   } else {
-    reset_op_cells(cells_, 6);
+    reset_file_scan_op_cells(cells_, 6);
     cells_[0].is_null_ = false;
     cells_[0].int_value_ = schema_row_idx_ + 1;
     cells_[1].is_null_ = false;
@@ -234,7 +234,7 @@ int ObFileScanOp::get_next_list_row()
     ObFileFormat format = ObFileFormat::INVALID;
     const bool queryable = S_ISREG(entry_stat.st_mode)
                            && OB_SUCCESS == ObFileScanUtils::detect_format(full_path, format);
-    reset_op_cells(cells_, 6);
+    reset_file_scan_op_cells(cells_, 6);
     cells_[0].is_null_ = false;
     cells_[0].string_value_ = entry->d_name;
     cells_[1].is_null_ = false;
