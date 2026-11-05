@@ -604,11 +604,6 @@ int ObExecContext::create_expr_op_ctx(uint64_t op_id, int64_t op_ctx_size, void 
   ObIAllocator &allocator = OB_NOT_NULL(pl_expr_allocator_) ? *pl_expr_allocator_ : allocator_;
   if (OB_UNLIKELY(op_id >= expr_op_size_ || op_ctx_size <= 0 || OB_ISNULL(expr_op_ctx_store_))) {
     ret = OB_INVALID_ARGUMENT;
-    char fsp_buf[160];
-    snprintf(fsp_buf, sizeof(fsp_buf), "FSP-exprctx op=%lu sz=%lu ctxsz=%ld nullstore=%d",
-             static_cast<unsigned long>(op_id), static_cast<unsigned long>(expr_op_size_),
-             op_ctx_size, OBISNULL(expr_op_ctx_store_) ? 1 : 0);
-    LOG_USER_ERROR(OB_INVALID_ARGUMENT, fsp_buf);
   } else if (OB_UNLIKELY(NULL != get_expr_op_ctx(op_id))) {
     ret = OB_INIT_TWICE;
     LOG_WARN("expr operator context has been created", K(op_id));

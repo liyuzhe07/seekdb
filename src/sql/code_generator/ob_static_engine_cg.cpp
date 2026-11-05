@@ -1475,13 +1475,6 @@ int ObStaticEngineCG::generate_spec(ObLogSort &op, ObSortSpec &spec, const bool 
             K(OB_NOT_NULL(op.get_topn_expr())), K(OB_NOT_NULL(op.get_topk_limit_expr())),
             K(spec.enable_encode_sortkey_opt_), K(spec.prefix_pos_), K(spec.is_local_merge_sort_),
             K(spec.part_cnt_), K(spec.sort_collations_.count()), K(spec.sort_cmp_funs_.count()));
-          char fsp_buf[160];
-          snprintf(fsp_buf, sizeof(fsp_buf), "FSP-sortspec colls=%ld funs=%ld part=%ld prefix=%ld",
-                   static_cast<long>(spec.sort_collations_.count()),
-                   static_cast<long>(spec.sort_cmp_funs_.count()),
-                   static_cast<long>(spec.part_cnt_),
-                   static_cast<long>(spec.prefix_pos_));
-          LOG_USER_ERROR(OB_INVALID_ARGUMENT, fsp_buf);
         }
       }
     }

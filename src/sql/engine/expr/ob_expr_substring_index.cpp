@@ -91,7 +91,6 @@ int ObExprSubstringIndex::cg_expr(ObExprCGCtx &, const ObRawExpr &raw_expr, ObEx
   if (OB_UNLIKELY(3 != raw_expr.get_param_count())) {
     ret = OB_INVALID_ARGUMENT;
     LOG_WARN("substring_index op should have 3 arguments", K(raw_expr.get_param_count()));
-    LOG_USER_ERROR(OB_INVALID_ARGUMENT, "FSP-si-arity");
   } else if (OB_ISNULL(text_expr = raw_expr.get_param_expr(0)) ||
                OB_ISNULL(pattern_expr = raw_expr.get_param_expr(1)) ||
                OB_ISNULL(nth_appearance_expr = raw_expr.get_param_expr(2))) {
