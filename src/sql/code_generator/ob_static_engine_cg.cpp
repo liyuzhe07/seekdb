@@ -5632,13 +5632,10 @@ int ObStaticEngineCG::generate_spec(ObLogFileScan &op, ObFileScanSpec &spec,
         // The position of the column inside the file is looked up by its name:
         // the column id of a column item is not necessarily the offset of the
         // column inside the file.
-        const ObString column_name(static_cast<int32_t>(column->column_name_.length()),
-                                   column->column_name_.data());
+        const common::ObString &column_name = column->column_name_;
         int64_t file_column_idx = -1;
         for (int64_t j = 0; -1 == file_column_idx && j < file_def->columns_.count(); ++j) {
-          const ObString file_column_name(static_cast<int32_t>(file_def->columns_.at(j).column_name_.length()),
-                                           file_def->columns_.at(j).column_name_.data());
-          if (0 == column_name.compare(file_column_name)) {
+          if (0 == column_name.compare(file_def->columns_.at(j).column_name_)) {
             file_column_idx = j;
           }
         }
