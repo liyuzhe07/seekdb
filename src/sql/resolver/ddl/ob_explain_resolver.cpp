@@ -209,10 +209,6 @@ int ObExplainResolver::resolve_file_sql_describe(ObSelectStmt &inner_stmt, ObStm
   if (OB_ISNULL(file_def)) {
     ret = OB_ERR_UNEXPECTED;
     LOG_WARN("no file table column to describe", K(ret));
-  } else if (OB_FAIL(sql.append("select column_0 as column_name, column_1 as column_type, "
-                                "column_2 as `null`, column_3 as `key`, column_4 as `default`, "
-                                "column_5 as extra from (values "))) {
-    LOG_WARN("failed to build describe sql", K(ret));
   } else {
     const ObIArray<SelectItem> &inner_select_items = inner_stmt.get_select_items();
     if (OB_UNLIKELY(0 == inner_select_items.count())) {
@@ -245,15 +241,13 @@ int ObExplainResolver::resolve_file_sql_describe(ObSelectStmt &inner_stmt, ObStm
         }
       }
       if (OB_SUCC(ret)) {
-        ret = sql.append_fmt("%srow('%.*s','%s','%s',NULL,NULL,NULL)",
-                             r > 0 ? "," : "",
+        ret = sql.append_fmt("%sselect '%.*s' as column_name, '%s' as column_type, "
+                             "'%s' as `null`, 'NULL' as `key`, 'NULL' as `default`, 'NULL' as extra",
+                             r > 0 ? " union all " : "",
                              static_cast<int>(escaped_name.length()), escaped_name.ptr(),
                              ObFileScanUtils::column_type_name(column.type_),
                              column.nullable_ ? "YES" : "NO");
       }
-    }
-    if (OB_SUCC(ret)) {
-      ret = sql.append(") v");
     }
   }
   if (OB_SUCC(ret)) {
