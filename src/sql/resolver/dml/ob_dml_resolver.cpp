@@ -4188,6 +4188,7 @@ int ObDMLResolver::resolve_file_table_item(const ParseNode &parse_tree,
                   || OB_ISNULL(parse_tree.children_[0]))) {
     ret = OB_INVALID_ARGUMENT;
     LOG_WARN("invalid file table parse tree", K(ret), K(parse_tree.type_), K(parse_tree.num_child_));
+    LOG_USER_ERROR(OB_INVALID_ARGUMENT, "FSP-file-tree-shape");
   } else if (OB_ISNULL(stmt) || OB_ISNULL(allocator_) || OB_ISNULL(session_info_)) {
     ret = OB_NOT_INIT;
     LOG_WARN("resolver is not initialized", K(ret), KP(stmt), KP(allocator_), KP(session_info_));
@@ -4209,11 +4210,13 @@ int ObDMLResolver::resolve_file_table_item(const ParseNode &parse_tree,
              && T_VARCHAR != parse_tree.children_[0]->type_) {
     ret = OB_INVALID_ARGUMENT;
     LOG_WARN("file table path must be a string literal", K(ret), K(parse_tree.children_[0]->type_));
+    LOG_USER_ERROR(OB_INVALID_ARGUMENT, "FSP-file-path-type");
   } else if (OB_FAIL(resolve_str_const(*parse_tree.children_[0], path))) {
     LOG_WARN("file table path must be a string literal", K(ret));
   } else if (path.empty()) {
     ret = OB_INVALID_ARGUMENT;
     LOG_WARN("file table path is empty", K(ret));
+    LOG_USER_ERROR(OB_INVALID_ARGUMENT, "FSP-file-path-empty");
   } else if (T_FILE_SCAN_TABLE == parse_tree.type_
              && OB_NOT_NULL(parse_tree.children_[1])
              && T_CHAR != parse_tree.children_[1]->type_

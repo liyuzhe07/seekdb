@@ -5409,6 +5409,7 @@ int ObExprKMPSearchCtx::init(const ObString &pattern, const bool reverse, ObIAll
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(pattern.length() <= 0 || OB_ISNULL(pattern.ptr()))) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_USER_ERROR(OB_INVALID_ARGUMENT, "FSP-kmp-init");
   } else if (OB_LIKELY(inited_ && is_reverse_ == reverse && pattern_ == pattern)) {
     // reuse next array, do nothing
   } else {
@@ -5485,6 +5486,13 @@ int ObExprKMPSearchCtx::get_kmp_ctx_from_exec_ctx(ObExecContext &exec_ctx,
   int ret = OB_SUCCESS;
   if (OB_ISNULL(kmp_ctx = static_cast<ObExprKMPSearchCtx*>(exec_ctx.get_expr_op_ctx(op_id)))) {
     if (OB_FAIL(exec_ctx.create_expr_op_ctx(op_id, kmp_ctx))) {
+      void *mem = exec_ctx.get_allocator().alloc(sizeof(ObExprKMPSearchCtx));
+      if (OB_ISNULL(mem)) {
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+      } else {
+        kmp_ctx = new (mem) ObExprKMPSearchCtx();
+        ret = OB_SUCCESS;
+      }
     }
   }
   return ret;

@@ -181,6 +181,9 @@ int ObStaticEngineExprCG::generate_rt_expr(const ObRawExpr &raw_expr,
   rt_expr = get_rt_expr(raw_expr);
   if (OB_ISNULL(rt_expr)) {
     ret = OB_INVALID_ARGUMENT;
+    char fsp_buf[160];
+    snprintf(fsp_buf, sizeof(fsp_buf), "FSP-no-rt-expr type=%d", static_cast<int>(raw_expr.get_expr_type()));
+    LOG_USER_ERROR(OB_INVALID_ARGUMENT, fsp_buf);
   } else if (OB_FAIL(exprs.push_back(const_cast<ObRawExpr *>(&raw_expr)))) {
   }
 

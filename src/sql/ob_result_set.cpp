@@ -449,8 +449,15 @@ OB_INLINE int ObResultSet::do_open_plan(ObExecContext &ctx)
   ctx.reset_op_env();
   exec_result_ = &(ctx.get_sql_exec_ctx().get_execute_result());
   if (stmt::T_PREPARE != stmt_type_) {
+    uint64_t expr_op_size = physical_plan_->get_expr_operator_size();
+    const int64_t need_ctx_cnt = physical_plan_->get_expr_frame_info().need_ctx_cnt_;
+    // next_expr_operator_id_ is not part of the plan serialization, so a plan that
+    // has been through serialize/deserialize would report zero contexts here.
+    if (need_ctx_cnt > 0 && static_cast<uint64_t>(need_ctx_cnt) > expr_op_size) {
+      expr_op_size = static_cast<uint64_t>(need_ctx_cnt);
+    }
     if (OB_FAIL(ctx.init_phy_op(physical_plan_->get_phy_operator_size()))) {
-    } else if (OB_FAIL(ctx.init_expr_op(physical_plan_->get_expr_operator_size()))) {
+    } else if (OB_FAIL(ctx.init_expr_op(expr_op_size))) {
     }
   }
 
