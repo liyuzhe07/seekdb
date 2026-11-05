@@ -516,8 +516,11 @@ REGISTER_OPERATOR(ObLogFunctionTable, PHY_FUNCTION_TABLE, ObFunctionTableSpec,
 class ObLogFileScan;
 class ObFileScanSpec;
 class ObFileScanOp;
+// The file scan is a row-at-a-time source operator, just like the json table
+// and the function table operators: the engine pulls one row per batch from
+// it and evaluates the projected column expressions in single row mode.
 REGISTER_OPERATOR(ObLogFileScan, PHY_FILE_SCAN, ObFileScanSpec,
-                  ObFileScanOp, NOINPUT, VECTORIZED_OP);
+                  ObFileScanOp, NOINPUT);
 
 class ObLogStatCollector;
 class ObStatCollectorSpec;

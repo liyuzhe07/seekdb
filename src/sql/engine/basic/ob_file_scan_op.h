@@ -62,7 +62,7 @@ class ObFileScanOp : public ObOperator
 {
 public:
   ObFileScanOp(ObExecContext &ctx, const ObOpSpec &spec, ObOpInput *input)
-    : ObOperator(ctx, spec, input), reader_(), cells_(), batch_cells_(), directory_(nullptr),
+    : ObOperator(ctx, spec, input), reader_(), cells_(), directory_(nullptr),
       schema_row_idx_(0)
   {}
   virtual ~ObFileScanOp() {}
@@ -89,7 +89,6 @@ private:
 private:
   ObFileScanReader reader_;
   std::vector<ObFileCell> cells_;
-  std::vector<std::vector<ObFileCell> > batch_cells_;
   DIR *directory_;
   int64_t schema_row_idx_;
 };

@@ -26,6 +26,7 @@ int ObLogFileScan::generate_access_exprs()
 {
   int ret = OB_SUCCESS;
   const ObDMLStmt *stmt = get_stmt();
+  access_exprs_.reset();
   if (OB_ISNULL(stmt)) {
     ret = OB_ERR_UNEXPECTED;
     LOG_WARN("statement is null", K(ret));

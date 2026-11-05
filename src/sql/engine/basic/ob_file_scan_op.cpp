@@ -28,6 +28,23 @@ namespace oceanbase
 using namespace common;
 namespace sql
 {
+namespace
+{
+// Reset the cells of the next row but keep the string buffers of the previous
+// row: the string values are handed over to the datum of the column
+// expression, so the buffer must stay valid after the row has been consumed.
+void reset_op_cells(std::vector<ObFileCell> &cells, const size_t count)
+{
+  if (cells.size() != count) {
+    cells.assign(count, ObFileCell());
+  } else {
+    for (size_t i = 0; i < count; ++i) {
+      cells[i].reset();
+    }
+  }
+}
+} // namespace
+
 OB_SERIALIZE_MEMBER((ObFileScanSpec, ObOpSpec), kind_, file_path_, secure_file_priv_, file_format_,
                     device_, inode_, file_size_, modified_time_ns_,
                     file_column_names_, file_column_types_, source_column_names_,
@@ -177,7 +194,7 @@ int ObFileScanOp::get_next_schema_row()
                 != file_spec().source_column_nullable_.count()) {
     ret = OB_ERR_UNEXPECTED;
   } else {
-    cells_.assign(6, ObFileCell());
+    reset_op_cells(cells_, 6);
     cells_[0].is_null_ = false;
     cells_[0].int_value_ = schema_row_idx_ + 1;
     cells_[1].is_null_ = false;
@@ -217,7 +234,7 @@ int ObFileScanOp::get_next_list_row()
     ObFileFormat format = ObFileFormat::INVALID;
     const bool queryable = S_ISREG(entry_stat.st_mode)
                            && OB_SUCCESS == ObFileScanUtils::detect_format(full_path, format);
-    cells_.assign(6, ObFileCell());
+    reset_op_cells(cells_, 6);
     cells_[0].is_null_ = false;
     cells_[0].string_value_ = entry->d_name;
     cells_[1].is_null_ = false;
@@ -325,60 +342,16 @@ int ObFileScanOp::inner_get_next_row()
 int ObFileScanOp::inner_get_next_batch(const int64_t max_row_cnt)
 {
   int ret = OB_SUCCESS;
-  bool is_end = false;
-  const int64_t batch_limit = std::min(max_row_cnt, file_spec().max_batch_size_);
-  batch_cells_.clear();
-  clear_evaluated_flag();
-  clear_datum_eval_flag();
-  while (OB_SUCC(ret) && !is_end
-         && static_cast<int64_t>(batch_cells_.size()) < batch_limit) {
-    if (OB_FAIL(ctx_.check_status())) {
-      LOG_WARN("file batch scan was interrupted", K(ret));
-    } else {
-      const ObFileTableKind kind = static_cast<ObFileTableKind>(file_spec().kind_);
-      if (ObFileTableKind::SCAN == kind) {
-        ret = get_next_scan_row();
-      } else if (ObFileTableKind::SCHEMA == kind) {
-        ret = get_next_schema_row();
-      } else if (ObFileTableKind::LIST == kind) {
-        ret = get_next_list_row();
-      } else {
-        ret = OB_ERR_UNEXPECTED;
-      }
-      if (OB_ITER_END == ret) {
-        ret = OB_SUCCESS;
-        is_end = true;
-      } else if (OB_SUCC(ret)) {
-        batch_cells_.push_back(cells_);
-      }
+  UNUSED(max_row_cnt);
+  if (OB_FAIL(inner_get_next_row())) {
+    brs_.size_ = 0;
+    if (OB_ITER_END == ret) {
+      brs_.end_ = true;
+      ret = OB_SUCCESS;
     }
-  }
-  for (int64_t i = 0; OB_SUCC(ret) && i < file_spec().column_exprs_.count(); ++i) {
-    const int64_t column_idx = file_spec().output_column_idxs_.at(i);
-    ObExpr *expr = file_spec().column_exprs_.at(i);
-    if (OB_ISNULL(expr) || column_idx < 0
-        || column_idx >= file_spec().file_column_types_.count()) {
-      ret = OB_ERR_UNEXPECTED;
-    } else {
-      ObDatum *datums = expr->locate_batch_datums(eval_ctx_);
-      const int64_t datum_count = expr->is_batch_result()
-                                ? static_cast<int64_t>(batch_cells_.size())
-                                : std::min<int64_t>(1, batch_cells_.size());
-      for (int64_t row_idx = 0; OB_SUCC(ret) && row_idx < datum_count; ++row_idx) {
-        if (column_idx >= static_cast<int64_t>(batch_cells_.at(row_idx).size())) {
-          ret = OB_ERR_UNEXPECTED;
-        } else if (OB_FAIL(write_cell(batch_cells_.at(row_idx).at(column_idx),
-                                     static_cast<ObFileColumnType>(
-                                       file_spec().file_column_types_.at(column_idx)),
-                                     datums[row_idx]))) {
-          LOG_WARN("failed to write file batch cell", K(ret), K(row_idx), K(column_idx));
-        }
-      }
-    }
-  }
-  if (OB_SUCC(ret)) {
-    brs_.size_ = batch_cells_.size();
-    brs_.end_ = is_end;
+  } else {
+    brs_.size_ = 1;
+    brs_.end_ = false;
   }
   return ret;
 }
@@ -396,7 +369,6 @@ int ObFileScanOp::inner_close()
 {
   reader_.close();
   cells_.clear();
-  batch_cells_.clear();
   schema_row_idx_ = 0;
   if (OB_NOT_NULL(directory_)) {
     closedir(directory_);

@@ -138,7 +138,9 @@ int validate_file_scan_options(const ParseNode *node)
       } else {
         const ObString format(static_cast<int32_t>(value_node->str_len_), value_node->str_value_);
         if (format.case_compare("newline_delimited") != 0
-            && format.case_compare("jsonl") != 0) {
+            && format.case_compare("jsonl") != 0
+            && format.case_compare("csv") != 0
+            && format.case_compare("parquet") != 0) {
           ret = OB_NOT_SUPPORTED;
         }
       }
