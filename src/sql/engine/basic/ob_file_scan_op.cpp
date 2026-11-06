@@ -227,7 +227,9 @@ int ObFileScanOp::get_next_list_row()
   int ret = OB_SUCCESS;
   struct dirent *entry = nullptr;
   while (OB_SUCC(ret) && OB_NOT_NULL(entry = readdir(directory_))) {
-    if (0 == strcmp(entry->d_name, ".") || 0 == strcmp(entry->d_name, "..")) {
+    // A glob wildcard never matches a name that begins with '.', which also hides the
+    // AppleDouble entries that can accompany files copied from macOS.
+    if ('.' == entry->d_name[0]) {
       continue;
     }
     const std::string directory_path(file_spec().file_path_.ptr(), file_spec().file_path_.length());

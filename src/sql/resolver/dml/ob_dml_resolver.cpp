@@ -4230,9 +4230,7 @@ int ObDMLResolver::resolve_file_table_item(const ParseNode &parse_tree,
   } else if (T_CHAR != parse_tree.children_[0]->type_
              && T_VARCHAR != parse_tree.children_[0]->type_
              && T_QUESTIONMARK != parse_tree.children_[0]->type_) {
-    // temporary probe: ob_errpkt_errno() forwards a positive ret unchanged, so the
-    // client sees 20000 + <parse node type> instead of a generic 1210.
-    ret = 20000 + static_cast<int>(parse_tree.children_[0]->type_);
+    ret = OB_INVALID_ARGUMENT;
     LOG_WARN("file table path must be a string literal", K(ret), K(parse_tree.children_[0]->type_));
   } else if (OB_FAIL(resolve_file_table_str_arg(*parse_tree.children_[0], path))) {
     LOG_WARN("file table path must be a string literal", K(ret));
