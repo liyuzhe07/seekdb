@@ -4155,6 +4155,28 @@ int ObDMLResolver::resolve_function_table_item(const ParseNode &parse_tree,
   return ret;
 }
 
+// A file table argument is needed while the statement is resolved. When the plan cache turns a
+// constant into a parameter it only rewrites type_ and leaves the literal text in str_value_,
+// which is what ObLoadDataResolver::resolve_string_node relies on for the same reason.
+int ObDMLResolver::resolve_file_table_str_arg(const ParseNode &arg_node, ObString &str_value)
+{
+  int ret = OB_SUCCESS;
+  if (T_QUESTIONMARK != arg_node.type_) {
+    if (OB_FAIL(resolve_str_const(arg_node, str_value))) {
+      LOG_WARN("failed to resolve string constant", K(ret), K(arg_node.type_));
+    }
+  } else if (OB_ISNULL(arg_node.str_value_) || arg_node.str_len_ <= 0) {
+    ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid file table string argument", K(ret), K(arg_node.str_len_));
+  } else if (OB_FAIL(ob_write_string(*allocator_,
+                                     ObString(static_cast<int32_t>(arg_node.str_len_),
+                                              const_cast<char *>(arg_node.str_value_)),
+                                     str_value))) {
+    LOG_WARN("failed to copy file table string argument", K(ret));
+  }
+  return ret;
+}
+
 int ObDMLResolver::resolve_file_table_item(const ParseNode &parse_tree,
                                            TableItem *&tbl_item)
 {
@@ -4206,12 +4228,13 @@ int ObDMLResolver::resolve_file_table_item(const ParseNode &parse_tree,
              && OB_FAIL(validate_file_scan_options(parse_tree.children_[2]))) {
     LOG_WARN("unsupported file scan option", K(ret));
   } else if (T_CHAR != parse_tree.children_[0]->type_
-             && T_VARCHAR != parse_tree.children_[0]->type_) {
+             && T_VARCHAR != parse_tree.children_[0]->type_
+             && T_QUESTIONMARK != parse_tree.children_[0]->type_) {
     // temporary probe: ob_errpkt_errno() forwards a positive ret unchanged, so the
     // client sees 20000 + <parse node type> instead of a generic 1210.
     ret = 20000 + static_cast<int>(parse_tree.children_[0]->type_);
     LOG_WARN("file table path must be a string literal", K(ret), K(parse_tree.children_[0]->type_));
-  } else if (OB_FAIL(resolve_str_const(*parse_tree.children_[0], path))) {
+  } else if (OB_FAIL(resolve_file_table_str_arg(*parse_tree.children_[0], path))) {
     LOG_WARN("file table path must be a string literal", K(ret));
   } else if (path.empty()) {
     ret = OB_INVALID_ARGUMENT;
@@ -4219,12 +4242,13 @@ int ObDMLResolver::resolve_file_table_item(const ParseNode &parse_tree,
   } else if (T_FILE_SCAN_TABLE == parse_tree.type_
              && OB_NOT_NULL(parse_tree.children_[1])
              && T_CHAR != parse_tree.children_[1]->type_
-             && T_VARCHAR != parse_tree.children_[1]->type_) {
+             && T_VARCHAR != parse_tree.children_[1]->type_
+             && T_QUESTIONMARK != parse_tree.children_[1]->type_) {
     ret = OB_INVALID_ARGUMENT;
     LOG_WARN("file scan format must be a string literal", K(ret), K(parse_tree.children_[1]->type_));
   } else if (T_FILE_SCAN_TABLE == parse_tree.type_
              && OB_NOT_NULL(parse_tree.children_[1])
-             && OB_FAIL(resolve_str_const(*parse_tree.children_[1], format_name))) {
+             && OB_FAIL(resolve_file_table_str_arg(*parse_tree.children_[1], format_name))) {
     LOG_WARN("file scan format must be a string literal", K(ret));
   } else if (T_FILE_SCAN_TABLE == parse_tree.type_
              && OB_FAIL(ObFileScanUtils::parse_format(
