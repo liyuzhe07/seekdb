@@ -20,6 +20,7 @@
 #include "lib/stat/ob_diagnostic_info_guard.h"
 #include "share/ob_server_struct.h"
 #include "sql/engine/cmd/ob_table_executor.h"
+#include "sql/engine/cmd/ob_ai_column_ddl_util.h"
 #include "query/command/ob_root_command_service.h"
 #include "query/command/ob_root_service_serialization.h"
 #include "query/runtime/ob_query_runtime_environment.h"
@@ -507,6 +508,15 @@ int ObCreateTableExecutor::execute(ObExecContext &ctx, ObCreateTableStmt &stmt)
           ctx.get_query_runtime_environment());
     }
   }
+  if (OB_SUCC(ret) && stmt.get_ai_column_defs().count() > 0) {
+    int tmp_ret = ObAiColumnDdlUtil::persist_ai_columns(res.table_id_,
+                                                       stmt.get_ai_column_defs(),
+                                                       &table_schema);
+    if (OB_SUCCESS != tmp_ret) {
+      LOG_WARN("failed to persist ai column definition", K(tmp_ret), K(res.table_id_));
+      ret = tmp_ret;
+    }
+  }
   return ret;
 }
 
@@ -762,6 +772,25 @@ int ObAlterTableExecutor::execute(ObExecContext &ctx, ObAlterTableStmt &stmt)
   OV (OB_NOT_NULL(task_exec_ctx = GET_SQL_EXECUTOR_CTX(ctx)), OB_NOT_INIT);
   if (OB_FAIL(ret)) {
     // do nothing
+  } else if (stmt.is_ai_column_retry()) {
+    // RETRY AI COLUMN re-queues rows instead of changing the schema, so it never
+    // reaches the DDL RPC and never bumps the schema version.
+    const uint64_t table_id = alter_table_arg.alter_table_schema_.get_table_id();
+    ObSchemaGetterGuard *schema_guard = ctx.get_sql_ctx()->schema_guard_;
+    const ObTableSchema *table_schema = NULL;
+    if (OB_ISNULL(schema_guard)) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("schema guard is null", K(ret));
+    } else if (OB_FAIL(schema_guard->get_table_schema(table_id, table_schema))) {
+      LOG_WARN("failed to get table schema", K(ret), K(table_id));
+    } else if (OB_ISNULL(table_schema)) {
+      ret = OB_TABLE_NOT_EXIST;
+      LOG_WARN("table schema is null", K(ret), K(table_id));
+    } else if (OB_FAIL(ObAiColumnDdlUtil::retry_ai_column(*schema_guard, *table_schema,
+                                                          stmt.get_ai_retry_def(),
+                                                          stmt.get_ai_retry_predicate()))) {
+      LOG_WARN("failed to retry ai column", K(ret), K(table_id));
+    }
   } else if (stmt.is_alter_triggers()) {
     if (stmt.get_tg_arg().trigger_infos_.count() > 0) {
       stmt.get_tg_arg().ddl_stmt_str_ = first_stmt;
@@ -878,6 +907,18 @@ int ObAlterTableExecutor::execute(ObExecContext &ctx, ObAlterTableStmt &stmt)
       "table_info", table_info_buffer,
       "schema_version", res.schema_version_);
     SQL_ENG_LOG(INFO, "finish alter table execute.", K(ret), "ddl_event_info", ObDDLEventInfo(GCTX.self_addr()), K(first_stmt));
+  }
+  if (OB_SUCC(ret) && stmt.get_ai_column_defs().count() > 0) {
+    const uint64_t ai_table_id = OB_INVALID_ID == alter_table_arg.table_id_
+                                 ? alter_table_arg.alter_table_schema_.get_table_id()
+                                 : alter_table_arg.table_id_;
+    int tmp_ret = ObAiColumnDdlUtil::persist_ai_columns(ai_table_id,
+                                                       stmt.get_ai_column_defs(),
+                                                       &alter_table_arg.alter_table_schema_);
+    if (OB_SUCCESS != tmp_ret) {
+      LOG_WARN("failed to persist ai column definition", K(tmp_ret), K(ai_table_id));
+      ret = tmp_ret;
+    }
   }
   return ret;
 }

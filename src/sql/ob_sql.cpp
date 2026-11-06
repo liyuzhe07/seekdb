@@ -24,6 +24,7 @@
 #include "sql/plan_cache/ob_ps_cache.h"
 #include "sql/plan_cache/ob_pcv_set.h"
 #include "sql/ob_sql_init.h"
+#include "sql/engine/dml/ob_ai_column_dml.h"
 #include "sql/resolver/ob_resolver.h"
 #include "sql/resolver/cmd/ob_variable_set_stmt.h"
 #include "sql/resolver/cmd/ob_call_procedure_stmt.h"
@@ -2163,6 +2164,14 @@ int ObSql::generate_stmt(ParseResult &parse_result,
       //add ref obj schema version to PL and ps info
       if (OB_SUCC(ret)) {
         if (OB_FAIL(result.get_ref_objects().assign(resolver_ctx.query_ctx_->global_dependency_tables_))) {
+        }
+      }
+      // AI columns still being computed are rejected here, before the optimizer
+      // and the executor run, so a refused write cannot have touched any row.
+      if (OB_SUCC(ret)) {
+        if (OB_FAIL(ObAiColumnDml::check_strict_read(result.get_session(),
+                                                     result.get_exec_context(), stmt))) {
+          SQL_LOG(WARN, "ai column strict read check failed", K(ret));
         }
       }
       if (OB_FAIL(ret)) {

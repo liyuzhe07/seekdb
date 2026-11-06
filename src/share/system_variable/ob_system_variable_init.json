@@ -10886,6 +10886,19 @@
     "background_cn": "",
     "ref_url": "https://dev.mysql.com/doc/refman/5.7/en/server-system-variables.html"
   },
+  "ai_column_strict_read": {
+    "id": 10755,
+    "name": "ai_column_strict_read",
+    "default_value": "0",
+    "base_value": "0",
+    "data_type": "bool",
+    "info": "When enabled, a statement that reads an AI column raises an error if the column still has rows whose derived value is not ready.",
+    "flags": "GLOBAL | SESSION ",
+    "publish_version": "",
+    "info_cn": "\u5f00\u542f\u540e\uff0c\u82e5 AI \u5217\u4ecd\u6709\u672a\u5c31\u7eea\u7684\u884c\uff0c\u8bfb\u53d6\u8be5\u5217\u5c06\u62a5\u9519\u800c\u4e0d\u662f\u9759\u9ed8\u8fd4\u56de\u7a7a\u503c",
+    "background_cn": "AI \u5217\u4e25\u683c\u8bfb\uff1a\u907f\u514d\u8bfb\u5230\u5c1a\u672a\u751f\u6210\u5b8c\u6210\u7684\u6d3e\u751f\u503c",
+    "ref_url": ""
+  },
   "enable_optimizer_rowgoal": {
     "id": 10747,
     "name": "enable_optimizer_rowgoal",

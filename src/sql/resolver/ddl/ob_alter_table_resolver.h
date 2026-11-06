@@ -99,6 +99,10 @@ private:
       share::schema::ObSchemaGetterGuard *schema_guard,
       const obcall::ObCreateForeignKeyArg &foreign_key_arg);
   int resolve_alter_table_option_list(const ParseNode &node);
+  // RETRY AI COLUMN is a data operation carried by an ALTER TABLE statement, so it
+  // is resolved here but never reaches the DDL RPC: the executor replays the
+  // recorded definition and predicate instead.
+  int resolve_ai_column_retry(const ParseNode &node, const int64_t action_count);
   int check_drop_column_is_partition_key(const ObTableSchema &table_schema, 
                                          const ObString &column_name);
 
