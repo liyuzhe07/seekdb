@@ -4207,7 +4207,9 @@ int ObDMLResolver::resolve_file_table_item(const ParseNode &parse_tree,
     LOG_WARN("unsupported file scan option", K(ret));
   } else if (T_CHAR != parse_tree.children_[0]->type_
              && T_VARCHAR != parse_tree.children_[0]->type_) {
-    ret = OB_INVALID_ARGUMENT;
+    // temporary probe: ob_errpkt_errno() forwards a positive ret unchanged, so the
+    // client sees 20000 + <parse node type> instead of a generic 1210.
+    ret = 20000 + static_cast<int>(parse_tree.children_[0]->type_);
     LOG_WARN("file table path must be a string literal", K(ret), K(parse_tree.children_[0]->type_));
   } else if (OB_FAIL(resolve_str_const(*parse_tree.children_[0], path))) {
     LOG_WARN("file table path must be a string literal", K(ret));
