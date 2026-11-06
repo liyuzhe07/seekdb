@@ -180,7 +180,7 @@ int ObStaticEngineExprCG::generate_rt_expr(const ObRawExpr &raw_expr,
   int ret = OB_SUCCESS;
   rt_expr = get_rt_expr(raw_expr);
   if (OB_ISNULL(rt_expr)) {
-    ret = OB_ENTRY_NOT_EXIST;
+    ret = OB_INVALID_ARGUMENT;
   } else if (OB_FAIL(exprs.push_back(const_cast<ObRawExpr *>(&raw_expr)))) {
   }
 

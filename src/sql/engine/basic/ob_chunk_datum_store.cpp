@@ -1663,7 +1663,7 @@ int ObChunkDatumStore::Iterator::get_next_batch(const StoredRow **rows,
 {
   int ret = OB_SUCCESS;
   if (NULL == rows || max_rows <= 0) {
-    ret = OB_SERIALIZE_ERROR;
+    ret = OB_INVALID_ARGUMENT;
   } else {
     if (!start_iter_) {
       if (OB_FAIL(load_next_block(row_it_))) {
@@ -1732,7 +1732,7 @@ int ObChunkDatumStore::RowIterator::get_next_batch(const StoredRow **rows,
   int ret = OB_SUCCESS;
   read_rows = 0;
   if (NULL == rows || max_rows <= 0) {
-    ret = OB_DESERIALIZE_ERROR;
+    ret = OB_INVALID_ARGUMENT;
   } else {
     while (read_rows < max_rows && OB_SUCC(ret)) {
       if (OB_FAIL(get_next_row(rows[read_rows]))) {

@@ -1115,7 +1115,7 @@ int ObFileScanReader::open(const std::string &path,
   for (size_t i = 0; OB_SUCC(ret) && i < projected_column_idxs.size(); ++i) {
     if (projected_column_idxs[i] < 0
         || projected_column_idxs[i] >= static_cast<int64_t>(columns.size())) {
-      ret = OB_NOT_THE_OBJECT;
+      ret = OB_INVALID_ARGUMENT;
     } else {
       projected_columns_[projected_column_idxs[i]] = true;
     }

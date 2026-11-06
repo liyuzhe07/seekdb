@@ -603,7 +603,7 @@ int ObExecContext::create_expr_op_ctx(uint64_t op_id, int64_t op_ctx_size, void 
   int ret = OB_SUCCESS;
   ObIAllocator &allocator = OB_NOT_NULL(pl_expr_allocator_) ? *pl_expr_allocator_ : allocator_;
   if (OB_UNLIKELY(op_id >= expr_op_size_ || op_ctx_size <= 0 || OB_ISNULL(expr_op_ctx_store_))) {
-    ret = OB_ERROR_FUNC_VERSION;
+    ret = OB_INVALID_ARGUMENT;
   } else if (OB_UNLIKELY(NULL != get_expr_op_ctx(op_id))) {
     ret = OB_INIT_TWICE;
     LOG_WARN("expr operator context has been created", K(op_id));
