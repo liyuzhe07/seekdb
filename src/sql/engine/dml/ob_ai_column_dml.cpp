@@ -599,7 +599,7 @@ int ObAiColumnDml::check_strict_read(ObSQLSessionInfo &session,
       || ObSQLUtils::is_ai_column_nested_sql(&exec_ctx)) {
     // maintenance and background statements drive the AI work themselves, they
     // must never be blocked by it
-  } else if (OB_FAIL(session.get_bool_sys_var(share::SYS_VAR_AI_COLUMN_STRICT_READ,
+  } else if (OB_FAIL(session.get_sys_variable(share::SYS_VAR_AI_COLUMN_STRICT_READ,
                                               strict_read))) {
     LOG_WARN("failed to read ai_column_strict_read", K(ret));
   } else if (!strict_read || OB_ISNULL(stmt)

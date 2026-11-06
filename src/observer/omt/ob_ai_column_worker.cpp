@@ -66,7 +66,6 @@ enum AiTaskState
   AI_TASK_RETRY_WAIT = 3
 };
 
-const char *ai_state_pending() { return "PENDING"; }
 const char *ai_state_ready() { return "READY"; }
 const char *ai_state_failed() { return "FAILED"; }
 
@@ -167,7 +166,7 @@ struct AiColumnCtx
       retry_count_(0), failed_(false), err_code_(OB_SUCCESS)
   {}
   const void *task_;
-  ObAiColumnDef def_;
+  sql::ObAiColumnDef def_;
   ObString state_name_;
   ObString request_name_;
   ObString result_text_;
@@ -314,7 +313,7 @@ int ObAiColumnWorker::claim_tasks(common::ObIAllocator &alloc, common::ObIArray<
   } else if (OB_FAIL(trans.start(sql_proxy_))) {
   } else if (FALSE_IT(started = true)) {
   } else {
-    ObISQLClient::ReadResult read_result;
+    common::sqlclient::ObISQLClient::ReadResult read_result;
     if (OB_FAIL(trans.read(read_result, select_sql.ptr()))) {
     } else if (OB_ISNULL(read_result.get_result())) {
       ret = OB_ERR_UNEXPECTED;
@@ -466,13 +465,13 @@ int ObAiColumnWorker::process_group(common::ObIAllocator &alloc, common::ObIArra
       } else if (FALSE_IT(ctx->task_ = &task)) {
       } else if (FALSE_IT(ctx->retry_count_ = task.retry_count_)) {
       } else if (OB_FAIL(make_hidden_name(alloc, result_column->get_column_name_str(),
-                                          AI_COLUMN_STATE_SUFFIX, ctx->state_name_))
+                                          sql::AI_COLUMN_STATE_SUFFIX, ctx->state_name_))
                  || OB_FAIL(make_hidden_name(alloc, result_column->get_column_name_str(),
-                                             AI_COLUMN_REQUEST_SUFFIX, ctx->request_name_))) {
+                                             sql::AI_COLUMN_REQUEST_SUFFIX, ctx->request_name_))) {
       } else if (OB_ISNULL(state_column = table_schema->get_column_schema(ctx->state_name_))) {
         ret = OB_ERR_UNEXPECTED;
         LOG_WARN("ai column state column is missing", K(ret), K(ctx->state_name_));
-      } else if (OB_FAIL(decode_ai_column_def(state_column->get_comment(), alloc, ctx->def_))) {
+      } else if (OB_FAIL(sql::decode_ai_column_def(state_column->get_comment(), alloc, ctx->def_))) {
       } else if (OB_FAIL(cols.push_back(ctx))) {
       }
     }
@@ -504,7 +503,7 @@ int ObAiColumnWorker::process_group(common::ObIAllocator &alloc, common::ObIArra
     if (OB_SUCC(ret)) {
       ObMySQLTransaction trans;
       bool started = false;
-      ObISQLClient::ReadResult read_result;
+      common::sqlclient::ObISQLClient::ReadResult read_result;
       if (OB_FAIL(trans.start(sql_proxy_))) {
       } else if (FALSE_IT(started = true)) {
       } else if (OB_FAIL(trans.read(read_result, select_sql.ptr()))) {
