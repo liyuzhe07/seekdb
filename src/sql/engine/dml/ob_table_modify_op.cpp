@@ -21,6 +21,7 @@
 #include "query/session/ob_inner_sql_connection_access.h"
 #include "sql/engine/ob_physical_plan.h"
 #include "sql/engine/dml/ob_dml_service.h"
+#include "sql/engine/dml/ob_ai_column_dml.h"
 
 namespace oceanbase
 {
