@@ -5408,7 +5408,7 @@ int ObExprKMPSearchCtx::init(const ObString &pattern, const bool reverse, ObIAll
 {
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(pattern.length() <= 0 || OB_ISNULL(pattern.ptr()))) {
-    ret = OB_INVALID_ARGUMENT;
+    ret = OB_INNER_STAT_ERROR;
   } else if (OB_LIKELY(inited_ && is_reverse_ == reverse && pattern_ == pattern)) {
     // reuse next array, do nothing
   } else {

@@ -89,7 +89,7 @@ int ObExprSubstringIndex::cg_expr(ObExprCGCtx &, const ObRawExpr &raw_expr, ObEx
   const ObRawExpr *pattern_expr = NULL;
   const ObRawExpr *nth_appearance_expr = NULL;
   if (OB_UNLIKELY(3 != raw_expr.get_param_count())) {
-    ret = OB_INVALID_ARGUMENT;
+    ret = OB_ERR_SYS;
     LOG_WARN("substring_index op should have 3 arguments", K(raw_expr.get_param_count()));
   } else if (OB_ISNULL(text_expr = raw_expr.get_param_expr(0)) ||
                OB_ISNULL(pattern_expr = raw_expr.get_param_expr(1)) ||

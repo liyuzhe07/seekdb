@@ -4186,7 +4186,7 @@ int ObDMLResolver::resolve_file_table_item(const ParseNode &parse_tree,
                   || expected_child_count != parse_tree.num_child_
                   || OB_ISNULL(parse_tree.children_)
                   || OB_ISNULL(parse_tree.children_[0]))) {
-    ret = OB_INVALID_ARGUMENT;
+    ret = OB_OBJ_TYPE_ERROR;
     LOG_WARN("invalid file table parse tree", K(ret), K(parse_tree.type_), K(parse_tree.num_child_));
   } else if (OB_ISNULL(stmt) || OB_ISNULL(allocator_) || OB_ISNULL(session_info_)) {
     ret = OB_NOT_INIT;
@@ -4207,18 +4207,18 @@ int ObDMLResolver::resolve_file_table_item(const ParseNode &parse_tree,
     LOG_WARN("unsupported file scan option", K(ret));
   } else if (T_CHAR != parse_tree.children_[0]->type_
              && T_VARCHAR != parse_tree.children_[0]->type_) {
-    ret = OB_INVALID_ARGUMENT;
+    ret = OB_ARRAY_OUT_OF_RANGE;
     LOG_WARN("file table path must be a string literal", K(ret), K(parse_tree.children_[0]->type_));
   } else if (OB_FAIL(resolve_str_const(*parse_tree.children_[0], path))) {
     LOG_WARN("file table path must be a string literal", K(ret));
   } else if (path.empty()) {
-    ret = OB_INVALID_ARGUMENT;
+    ret = OB_INIT_TWICE;
     LOG_WARN("file table path is empty", K(ret));
   } else if (T_FILE_SCAN_TABLE == parse_tree.type_
              && OB_NOT_NULL(parse_tree.children_[1])
              && T_CHAR != parse_tree.children_[1]->type_
              && T_VARCHAR != parse_tree.children_[1]->type_) {
-    ret = OB_INVALID_ARGUMENT;
+    ret = OB_NOT_INIT;
     LOG_WARN("file scan format must be a string literal", K(ret), K(parse_tree.children_[1]->type_));
   } else if (T_FILE_SCAN_TABLE == parse_tree.type_
              && OB_NOT_NULL(parse_tree.children_[1])

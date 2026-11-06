@@ -1470,7 +1470,7 @@ int ObStaticEngineCG::generate_spec(ObLogSort &op, ObSortSpec &spec, const bool 
       if (OB_SUCC(ret)) {
         if (spec.sort_collations_.count() != spec.sort_cmp_funs_.count()
             || (spec.part_cnt_ > 0 && spec.part_cnt_ >= spec.sort_collations_.count())) {
-          ret = OB_INVALID_ARGUMENT;
+          ret = OB_ENTRY_EXIST;
           LOG_WARN("part cnt or sort size not meet the expection", K(ret),
             K(OB_NOT_NULL(op.get_topn_expr())), K(OB_NOT_NULL(op.get_topk_limit_expr())),
             K(spec.enable_encode_sortkey_opt_), K(spec.prefix_pos_), K(spec.is_local_merge_sort_),

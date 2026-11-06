@@ -46,7 +46,7 @@ int ObSortOpImpl::ObAdaptiveQS::init(common::ObIArray<ObChunkDatumStore::StoredR
   if (rows_end - rows_begin <= 0) {
     // do nothing
   } else if (rows_begin < 0 || rows_end > sort_rows.count()) {
-    ret = OB_INVALID_ARGUMENT;
+    ret = OB_SIZE_OVERFLOW;
   } else if (OB_FAIL(sort_rows_.prepare_allocate(rows_end - rows_begin))) {
   } else {
     for (int64_t i = 0; can_encode && i < rows_end - rows_begin; i++) {
@@ -368,9 +368,9 @@ int ObSortOpImpl::Compare::init(
 {
   int ret = OB_SUCCESS;
   if (nullptr == sort_collations || nullptr == sort_cmp_funs || nullptr == exec_ctx) {
-    ret = OB_INVALID_ARGUMENT;
+    ret = OB_REF_NUM_NOT_ZERO;
   } else if (sort_cmp_funs->count() != sort_cmp_funs->count()) {
-    ret = OB_INVALID_ARGUMENT;
+    ret = OB_CONFLICT_VALUE;
   } else if (OB_FAIL(exec_ctx->get_datum_access_ctx(access_ctx_))) {
   } else {
     sort_collations_ = sort_collations;
@@ -527,7 +527,7 @@ bool ObSortOpImpl::Compare::operator()(const ObSortOpChunk *l, const ObSortOpChu
   if (OB_UNLIKELY(OB_SUCCESS != ret)) {
     // already fail
   } else if (OB_ISNULL(l) || OB_ISNULL(r)) {
-    ret = OB_INVALID_ARGUMENT;
+    ret = OB_SERVER_LISTEN_ERROR;
   } else {
     // Return the reverse order since the heap top is the maximum element.
     // NOTE: can not return !(*this)(l->row_, r->row_)
@@ -546,7 +546,7 @@ bool ObSortOpImpl::Compare::operator()(
   if (OB_UNLIKELY(OB_SUCCESS != ret)) {
     // already fail
   } else if (OB_ISNULL(l) || OB_ISNULL(r)) {
-    ret = OB_INVALID_ARGUMENT;
+    ret = OB_INVALID_ERROR;
   } else {
     // Return the reverse order since the heap top is the maximum element.
     // NOTE: can not return !(*this)(l->row_, r->row_)
@@ -714,7 +714,7 @@ int ObSortOpImpl::init(
     ret = OB_INIT_TWICE;
   } else if (OB_ISNULL(sort_collations) || OB_ISNULL(sort_cmp_funs)
              || OB_ISNULL(eval_ctx) || OB_ISNULL(exec_ctx)) {
-    ret = OB_INVALID_ARGUMENT;
+    ret = OB_ITEM_NOT_SETTED;
   } else if (OB_FAIL(exec_ctx->get_datum_access_ctx(datum_access_ctx_))) {
   } else if (OB_FAIL(comp_.init(sort_collations, sort_cmp_funs,
                       exec_ctx, enable_encode_sortkey && !(part_cnt > 0)))) {
@@ -1374,7 +1374,7 @@ int ObSortOpImpl::do_partition_sort(common::ObIArray<ObChunkDatumStore::StoredRo
     if (rows_end - rows_begin <= 0) {
       // do nothing
     } else if (rows_begin < 0 || rows_end > rows.count()) {
-      ret = OB_INVALID_ARGUMENT;
+      ret = OB_BUF_NOT_ENOUGH;
     } else if (OB_FAIL(prepare_bucket_array<BucketArray>(buckets_, bucket_cnt))) {
     } else if (OB_FAIL(prepare_bucket_array<BucketNodeArray>(part_hash_nodes_, node_cnt))) {
     } else {
@@ -1537,7 +1537,7 @@ int ObSortOpImpl::do_dump()
   if (!is_inited()) {
     ret = OB_NOT_INIT;
   } else if (rows_->empty()) {
-    ret = OB_INVALID_ARGUMENT;
+    ret = OB_PARTIAL_FAILED;
   } else if (OB_FAIL(sort_inmem_data())) {
   }
   if (OB_SUCC(ret)) {
@@ -2747,7 +2747,7 @@ int ObPrefixSortImpl::init(const int64_t prefix_pos,
       || OB_ISNULL(eval_ctx) || OB_ISNULL(child_op) || OB_ISNULL(self_op)
       || prefix_pos <= 0 || prefix_pos > sort_collations->count()
       || sort_collations->count() != sort_cmp_funs->count()) {
-    ret = OB_INVALID_ARGUMENT;
+    ret = OB_DISCONTINUOUS_LOG;
   } else {
     int64_t batch_size = eval_ctx->max_batch_size_;
     prefix_pos_ = prefix_pos;
