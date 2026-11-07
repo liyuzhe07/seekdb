@@ -117,6 +117,13 @@ jobs:
           fi
           find tools/deploy/mysql_test/t -name '*.test' -delete 2>/dev/null || true
           find tools/deploy/mysql_test/test_suite -name '*.test' ! -path '*ai_column*' -delete
+          python3 - <<'EOF'
+          import re
+          path = 'tools/deploy/mysqltest_config.yaml'
+          text = open(path).read()
+          text = re.sub(r'(exclude-set:\n)(?:[ \t]+-[^\n]*\n)*', r'\1', text)
+          open(path, 'w').write(text)
+          EOF
           echo "remaining .test files:"
           find tools/deploy/mysql_test -name '*.test'
           RUNTIME_DIR=/tmp/seekdb_runtime
