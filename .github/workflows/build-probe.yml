@@ -27,7 +27,7 @@ jobs:
         run: |
           export DEBIAN_FRONTEND=noninteractive
           sudo apt-get update
-          sudo apt-get install -y git wget rpm rpm2cpio cpio make build-essential binutils m4 libtool-bin libncurses5 python3
+          sudo apt-get install -y git wget rpm rpm2cpio cpio make build-essential binutils m4 libtool-bin libncurses5 python3 ccache
 
       - name: Cache deps
         id: cache-deps
@@ -38,10 +38,22 @@ jobs:
           key: ${{ runner.os }}-build-${{ env.cache-name }}-el9.x86_64-${{ hashFiles('deps/init/oceanbase.el9.x86_64.deps') }}
           path: deps/3rd
 
+      - name: Cache ccache
+        uses: actions/cache@v3
+        with:
+          key: ccache-${{ github.run_id }}
+          restore-keys: |
+            ccache-
+          path: ~/.cache/ccache
+
       - name: Initialize release build
         shell: bash
         run: |
           set +e
+          mkdir -p "$HOME/ccache-bin"
+          for c in gcc g++ cc c++; do ln -sf "$(command -v ccache)" "$HOME/ccache-bin/$c"; done
+          export PATH="$HOME/ccache-bin:$PATH"
+          export CCACHE_SLOPPINESS=time_macros
           if [[ -f ~/.bashrc ]]; then source ~/.bashrc; fi
           ./build.sh release --init > /tmp/init1.log 2>&1
           echo "$?" > /tmp/init_exit
@@ -75,6 +87,10 @@ jobs:
         shell: bash
         run: |
           set +e
+          mkdir -p "$HOME/ccache-bin"
+          for c in gcc g++ cc c++; do ln -sf "$(command -v ccache)" "$HOME/ccache-bin/$c"; done
+          export PATH="$HOME/ccache-bin:$PATH"
+          export CCACHE_SLOPPINESS=time_macros
           if [[ -f ~/.bashrc ]]; then source ~/.bashrc; fi
           sed -i 's/-Werror//' src/sql/parser/gen_parser.sh
           sed -i 's/\*"conflict"\*/"__NEVER__"/' src/sql/parser/gen_parser.sh
@@ -86,10 +102,12 @@ jobs:
           timeout -k 60 3000 make -j4 -k > /tmp/build.log 2>&1
           echo "$?" > /tmp/make_exit
           echo "make exit $(cat /tmp/make_exit)"
-          grep -c "error:" /tmp/build.log
+          echo "error lines: $(grep -c 'error:' /tmp/build.log)"
+          true
 
       - name: Run ai_column mysqltest suite
         shell: bash
+        if: always()
         run: |
           set +e
           BINARY=build_release/src/observer/seekdb
