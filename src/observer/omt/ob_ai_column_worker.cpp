@@ -313,7 +313,7 @@ int ObAiColumnWorker::claim_tasks(common::ObIAllocator &alloc, common::ObIArray<
   } else if (OB_FAIL(trans.start(sql_proxy_))) {
   } else if (FALSE_IT(started = true)) {
   } else {
-    common::sqlclient::ObISQLClient::ReadResult read_result;
+    common::ObISQLClient::ReadResult read_result;
     if (OB_FAIL(trans.read(read_result, select_sql.ptr()))) {
     } else if (OB_ISNULL(read_result.get_result())) {
       ret = OB_ERR_UNEXPECTED;
@@ -503,7 +503,7 @@ int ObAiColumnWorker::process_group(common::ObIAllocator &alloc, common::ObIArra
     if (OB_SUCC(ret)) {
       ObMySQLTransaction trans;
       bool started = false;
-      common::sqlclient::ObISQLClient::ReadResult read_result;
+      common::ObISQLClient::ReadResult read_result;
       if (OB_FAIL(trans.start(sql_proxy_))) {
       } else if (FALSE_IT(started = true)) {
       } else if (OB_FAIL(trans.read(read_result, select_sql.ptr()))) {
