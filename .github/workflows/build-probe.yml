@@ -171,8 +171,23 @@ jobs:
               done <<< "$FOUND"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+          LOGDIR=$(find /tmp/mt_task/instance -maxdepth 3 -type d -name log 2>/dev/null | head -1)
+          if [[ -n "$LOGDIR" ]]; then
+            {
+              echo "## observer log: retry failure evidence"
+              echo '```'
+              grep -h -E "ret=-4014|failed to retry ai column|failed to select retry rows|failed to invalidate ai column result|failed to queue ai column retry|failed to start transaction|failed to commit ai column retry" "$LOGDIR"/*.log 2>/dev/null | head -60
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            mkdir -p /tmp/out/observer_log
+            for f in "$LOGDIR"/*.log; do
+              tail -c 3000000 "$f" > "/tmp/out/observer_log/$(basename "$f")" 2>/dev/null
+            done
+          fi
           mkdir -p /tmp/out
           find "$TASK_DIR" \( -name '*.reject' -o -name 'mysqltest.log' \) -exec cp --parents {} /tmp/out/ \; 2>/dev/null
+          mkdir -p /tmp/out/mysqltest_log
+          cp "$TASK_DIR"/mysqltest_log/*.log /tmp/out/mysqltest_log/ 2>/dev/null
           cp "$TASK_DIR/seekdb_result.json" /tmp/out/ 2>/dev/null
           ls -la /tmp/out
 
