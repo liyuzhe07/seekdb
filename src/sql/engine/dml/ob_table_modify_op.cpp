@@ -645,21 +645,15 @@ bool ObTableModifyOp::has_ai_column(const ObDMLBaseCtDef &dml_ctdef)
     const uint64_t cand_ids[2] = { dml_ctdef.das_base_ctdef_.index_tid_,
                                    dml_ctdef.das_base_ctdef_.table_id_ };
     ObSqlCtx *sql_ctx = ctx_.get_sql_ctx();
-    const share::schema::ObTableSchema *table_schema = NULL;
     if (NULL != sql_ctx && NULL != sql_ctx->schema_guard_) {
       for (int64_t i = 0; 0 == ai_column_flag_ && i < 2; ++i) {
-        table_schema = NULL;
+        const share::schema::ObTableSchema *table_schema = NULL;
         if (OB_SUCCESS == sql_ctx->schema_guard_->get_table_schema(cand_ids[i], table_schema)
             && NULL != table_schema && table_has_ai_column(*table_schema)) {
           ai_column_flag_ = 1;
-          LOG_INFO("[AI_PROBE] has_ai_column hit", K(i), "table_id", cand_ids[i]);
         }
       }
     }
-    LOG_INFO("[AI_PROBE] has_ai_column", "id0", cand_ids[0], "id1", cand_ids[1],
-             K(ai_column_flag_), "has_sql_ctx", NULL != sql_ctx,
-             "has_guard", NULL != sql_ctx && NULL != sql_ctx->schema_guard_,
-             "has_schema", NULL != table_schema);
   }
   return 1 == ai_column_flag_;
 }

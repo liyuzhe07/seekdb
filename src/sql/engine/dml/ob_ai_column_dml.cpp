@@ -429,14 +429,14 @@ int ObAiColumnDml::process(ObTableModifyOp &op,
   if (OB_FAIL(ret) || !need_maintenance) {
     // pass through, or nested maintenance: skip all schema work
   } else if (OB_FAIL(collect_ai_defs(alloc, *table_schema, defs))) {
+  } else if (defs.empty()) {
+    // ordinary table: no bookkeeping column was ever declared on it
+    need_maintenance = false;
   } else if (OB_FAIL(schema_guard->get_database_schema(table_schema->get_database_id(),
                                                        db_schema))) {
     LOG_WARN("failed to get database schema", K(ret), K(table_schema->get_database_id()));
   } else if (OB_ISNULL(db_schema)) {
     ret = OB_ERR_UNEXPECTED;
-  } else {
-    LOG_INFO("[AI_PROBE] collect", "table_id", table_schema->get_table_id(),
-             "def_cnt", defs.count(), "col_cnt", table_schema->get_column_count());
   }
 
   if (OB_FAIL(ret) || !need_maintenance) {
@@ -486,7 +486,6 @@ int ObAiColumnDml::process(ObTableModifyOp &op,
     common::ObSqlString update_sql;
     common::ObSqlString task_sql;
     char request_id[64];
-    LOG_INFO("[AI_PROBE] building task sql", "table_id", table_id, "event", (int)event);
     make_request_id(request_id, sizeof(request_id));
     const int32_t request_id_len = static_cast<int32_t>(strlen(request_id));
     const common::ObString db_name = db_schema->get_database_name_str();
@@ -542,7 +541,7 @@ int ObAiColumnDml::process(ObTableModifyOp &op,
         uint64_t column_id = OB_INVALID_ID;
         if (OB_ISNULL(col_schema)) {
           ret = OB_ERR_UNEXPECTED;
-          LOG_WARN("[AI_PROBE] ai column schema not found", K(ret),
+          LOG_WARN("ai column result column is missing from the schema", K(ret),
                    "column", defs.at(i)->def_.column_name_, K(table_id));
         } else if (OB_FAIL(task_sql.append_fmt("%s(%lu, %lu, ", 0 == i ? "" : ", ",
                                         table_id, col_schema->get_column_id()))) {
@@ -559,20 +558,19 @@ int ObAiColumnDml::process(ObTableModifyOp &op,
       // mark nested sql triggered by ai column maintenance, same as fk cascading,
       // so that the inner statement skips start/end stmt bookkeeping.
       op.get_exec_ctx().get_das_ctx().is_ai_column_cascading_ = true;
-      LOG_INFO("[AI_PROBE] executing task sql", K(table_id));
       if (OB_FAIL(op.open_inner_conn())) {
-        LOG_INFO("[AI_PROBE] open inner conn failed", K(ret));
+        LOG_WARN("failed to open inner connection for ai column maintenance", K(ret));
       } else if (OB_FAIL(op.begin_nested_session(true))) {
-        LOG_INFO("[AI_PROBE] begin nested session failed", K(ret));
+        LOG_WARN("failed to begin nested session", K(ret));
       } else {
         if (AI_DML_DELETE != event && OB_FAIL(op.execute_write(update_sql.ptr()))) {
-          LOG_INFO("[AI_PROBE] invalidate sql failed", K(ret), "sql", update_sql.ptr());
+          LOG_WARN("failed to invalidate ai column result", K(ret), "sql", update_sql.ptr());
         } else if (OB_FAIL(op.execute_write(task_sql.ptr()))) {
-          LOG_INFO("[AI_PROBE] task sql failed", K(ret), "sql", task_sql.ptr());
+          LOG_WARN("failed to publish ai column task", K(ret), "sql", task_sql.ptr());
         }
         int end_ret = op.end_nested_session();
         if (OB_SUCCESS != end_ret) {
-          LOG_INFO("[AI_PROBE] end nested session failed", K(end_ret));
+          LOG_WARN("failed to end nested session", K(end_ret));
           if (OB_SUCC(ret)) {
             ret = end_ret;
           }
@@ -582,7 +580,6 @@ int ObAiColumnDml::process(ObTableModifyOp &op,
       session->set_in_ai_column_maintenance(false);
     }
   }
-  LOG_INFO("[AI_PROBE] process end", K(ret), "event", (int)event, K(table_id));
   return ret;
 }
 
