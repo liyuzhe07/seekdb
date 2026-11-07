@@ -88,6 +88,66 @@ jobs:
           echo "make exit $(cat /tmp/make_exit)"
           grep -c "error:" /tmp/build.log
 
+      - name: Run ai_column mysqltest suite
+        shell: bash
+        run: |
+          set +e
+          BINARY=build_release/src/observer/seekdb
+          if [[ ! -x "$BINARY" ]]; then
+            echo "observer binary missing, skip mysqltest"
+            exit 0
+          fi
+          find tools/deploy/mysql_test/t -name '*.test' -delete 2>/dev/null || true
+          find tools/deploy/mysql_test/test_suite -name '*.test' ! -path '*ai_column*' -delete
+          echo "remaining .test files:"
+          find tools/deploy/mysql_test -name '*.test'
+          RUNTIME_DIR=/tmp/seekdb_runtime
+          TASK_DIR=/tmp/mt_task
+          rm -rf "$RUNTIME_DIR" "$TASK_DIR"
+          mkdir -p "$RUNTIME_DIR/obclient" "$TASK_DIR"
+          cp -L -f "$BINARY" "$RUNTIME_DIR/seekdb"
+          cp -a deps/3rd/u01/obclient/. "$RUNTIME_DIR/obclient/"
+          export GITHUB_WORKSPACE="$PWD"
+          export SEEKDB_TASK_DIR="$TASK_DIR"
+          export SEEKDB_RUNTIME_DIR="$RUNTIME_DIR"
+          export SEEKDB_BINARY="$RUNTIME_DIR/seekdb"
+          export SLICE_IDX=0 SLICES=1
+          chmod +x .github/script/seekdb/mysqltest_slice.sh
+          timeout -k 60 4200 .github/script/seekdb/mysqltest_slice.sh > /tmp/mt_run.log 2>&1
+          echo "runner exit $?"
+          tail -n 50 /tmp/mt_run.log
+          mkdir -p /tmp/out
+          cp /tmp/mt_run.log /tmp/out/ 2>/dev/null
+
+      - name: Write mysqltest report
+        shell: bash
+        if: always()
+        run: |
+          set +e
+          TASK_DIR=/tmp/mt_task
+          {
+            echo "## mysqltest seekdb_result.json"
+            echo '```'
+            head -c 4000 "$TASK_DIR/seekdb_result.json" 2>/dev/null
+            echo '```'
+            echo "## failure logs and rejects"
+            FOUND=$(find "$TASK_DIR" \( -name '*.reject' -o -name 'mysqltest.log' \) 2>/dev/null)
+            if [[ -z "$FOUND" ]]; then
+              echo "(none)"
+            else
+              while IFS= read -r f; do
+                echo "### $f"
+                echo '```'
+                tail -c 8000 "$f"
+                echo '```'
+              done <<< "$FOUND"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p /tmp/out
+          find "$TASK_DIR" \( -name '*.reject' -o -name 'mysqltest.log' \) -exec cp --parents {} /tmp/out/ \; 2>/dev/null
+          cp "$TASK_DIR/seekdb_result.json" /tmp/out/ 2>/dev/null
+          ls -la /tmp/out
+
       - name: Write report
         shell: bash
         if: always()
