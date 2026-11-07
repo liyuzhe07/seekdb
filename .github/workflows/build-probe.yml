@@ -1,0 +1,108 @@
+name: Build Probe
+
+on:
+  push:
+    branches: [ci/task3-probe]
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Free Disk Space
+        uses: insightsengineering/disk-space-reclaimer@v1
+        with:
+          tools-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
+          docker-images: true
+
+      - uses: actions/checkout@v4
+
+      - name: Install ubuntu environment
+        shell: bash
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt-get update
+          sudo apt-get install -y git wget rpm rpm2cpio cpio make build-essential binutils m4 libtool-bin libncurses5 python3
+
+      - name: Cache deps
+        id: cache-deps
+        uses: actions/cache@v3
+        env:
+          cache-name: cache-deps
+        with:
+          key: ${{ runner.os }}-build-${{ env.cache-name }}-el9.x86_64-${{ hashFiles('deps/init/oceanbase.el9.x86_64.deps') }}
+          path: deps/3rd
+
+      - name: Initialize release build
+        shell: bash
+        run: |
+          set +e
+          if [[ -f ~/.bashrc ]]; then source ~/.bashrc; fi
+          ./build.sh release --init > /tmp/init.log 2>&1
+          echo "$?" > /tmp/init_exit
+          tail -n 40 /tmp/init.log
+          echo "=== configure exit $(cat /tmp/init_exit) ==="
+
+      - name: Grammar check (bison -Werror)
+        shell: bash
+        run: |
+          set +e
+          DEVTOOLS=$PWD/deps/3rd/usr/local/oceanbase/devtools
+          export PATH=$DEVTOOLS/bin:$PATH
+          export BISON_PKGDATADIR=$DEVTOOLS/share/bison
+          cd src/sql/parser
+          bison -V > /tmp/bison.log 2>&1
+          bison -v -Werror -d sql_parser_mysql_mode.y -o /tmp/probe_tab.c >> /tmp/bison.log 2>&1
+          echo "$?" > /tmp/bison_exit
+          head -1 /tmp/bison.log
+          echo "bison exit $(cat /tmp/bison_exit)"
+          grep -i -E "conflict|error" /tmp/bison.log | head -30
+          for f in _gen_parser.error _gen_parser.output; do
+            if [[ -s $f ]]; then echo "=== $f ==="; tail -n 30 $f; fi
+          done
+
+      - name: Build release Unity binary
+        shell: bash
+        run: |
+          set +e
+          if [[ -f ~/.bashrc ]]; then source ~/.bashrc; fi
+          cd build_release
+          make -j4 -k > /tmp/build.log 2>&1
+          echo "$?" > /tmp/make_exit
+          echo "make exit $(cat /tmp/make_exit)"
+          tail -n 30 /tmp/build.log
+
+      - name: Write report
+        shell: bash
+        if: always()
+        run: |
+          set +e
+          {
+            echo "## bison: exit $(cat /tmp/bison_exit 2>/dev/null || echo 'n/a')"
+            grep -i -E "conflict|error" /tmp/bison.log 2>/dev/null | head -25
+            echo
+            echo "## configure exit $(cat /tmp/init_exit 2>/dev/null || echo 'n/a')"
+            echo "## make exit $(cat /tmp/make_exit 2>/dev/null || echo 'n/a')"
+            echo
+            echo "## first compile errors"
+            grep -n -E "error:|fatal error|undefined reference to" /tmp/build.log 2>/dev/null | head -60
+            echo
+            echo "## failing targets"
+            grep -n -E "\*\*\* \[" /tmp/build.log 2>/dev/null | head -25
+          } >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p /tmp/out
+          cp /tmp/build.log /tmp/init.log /tmp/bison.log /tmp/out/ 2>/dev/null
+          ls -la /tmp/out
+
+      - name: Upload logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-probe-logs
+          path: /tmp/out
+          if-no-files-found: ignore
