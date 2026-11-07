@@ -103,6 +103,7 @@ jobs:
           echo "$?" > /tmp/make_exit
           echo "make exit $(cat /tmp/make_exit)"
           echo "error lines: $(grep -c 'error:' /tmp/build.log)"
+          ccache -s | head -10
           true
 
       - name: Run ai_column mysqltest suite
@@ -121,9 +122,11 @@ jobs:
           import re
           path = 'tools/deploy/mysqltest_config.yaml'
           text = open(path).read()
-          text = re.sub(r'(exclude-set:\n)(?:[ \t]+-[^\n]*\n)*', r'\1', text)
+          text = re.sub(r'(exclude-set:\n)(?:[ \t]+[^\n]*\n)*', r'\1', text)
           open(path, 'w').write(text)
           EOF
+          echo "--- config after cleaning ---"
+          head -12 tools/deploy/mysqltest_config.yaml
           echo "remaining .test files:"
           find tools/deploy/mysql_test -name '*.test'
           RUNTIME_DIR=/tmp/seekdb_runtime
