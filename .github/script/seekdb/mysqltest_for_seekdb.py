@@ -382,6 +382,7 @@ def run_case(args, deploy_dir, case, tmp_dir, log_dir):
     if (
         return_code != 0
         and reject_file is not None
+        and not os.environ.get("SEEKDB_STRICT_RESULT")
         and any(message in output for message in RESULT_MISMATCH_MESSAGES)
         and files_equal_ignoring_trailing_whitespace(
             case.result_file, reject_file

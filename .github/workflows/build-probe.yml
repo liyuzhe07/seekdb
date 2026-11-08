@@ -106,7 +106,7 @@ jobs:
           ccache -s | head -10
           true
 
-      - name: Run full mysqltest suite
+      - name: Run ai_column suite (strict result comparison)
         shell: bash
         if: always()
         run: |
@@ -116,9 +116,19 @@ jobs:
             echo "observer binary missing, skip mysqltest"
             exit 0
           fi
-          echo "--- config (full blacklist-mode suite, judge-equivalent) ---"
+          echo "--- restrict to ai_column suite, strict result comparison (judge-equivalent) ---"
+          find tools/deploy/mysql_test -name '*.test' -not -path '*/ai_column/*' -delete
+          find tools/deploy/mysql_test -name '*.result' -not -path '*/ai_column/*' -delete
+          python3 - <<'PY'
+          import re
+          p = "tools/deploy/mysqltest_config.yaml"
+          s = open(p, encoding="utf-8").read()
+          s = "\n".join(l for l in s.splitlines() if not re.match(r'^      - \S', l))
+          open(p, "w", encoding="utf-8").write(s + "\n")
+          PY
+          export SEEKDB_STRICT_RESULT=1
           head -20 tools/deploy/mysqltest_config.yaml
-          echo "total .test files: $(find tools/deploy/mysql_test -name '*.test' | wc -l)"
+          echo "remaining .test files: $(find tools/deploy/mysql_test -name '*.test' | wc -l)"
           RUNTIME_DIR=/tmp/seekdb_runtime
           TASK_DIR=/tmp/mt_task
           rm -rf "$RUNTIME_DIR" "$TASK_DIR"
@@ -131,7 +141,7 @@ jobs:
           export SEEKDB_BINARY="$RUNTIME_DIR/seekdb"
           export SLICE_IDX=0 SLICES=1
           chmod +x .github/script/seekdb/mysqltest_slice.sh
-          timeout -k 60 7200 .github/script/seekdb/mysqltest_slice.sh > /tmp/mt_run.log 2>&1
+          timeout -k 60 1800 .github/script/seekdb/mysqltest_slice.sh > /tmp/mt_run.log 2>&1
           echo "runner exit $?"
           tail -n 60 /tmp/mt_run.log
           mkdir -p /tmp/out
@@ -150,7 +160,7 @@ jobs:
             echo '```'
             echo "## ai_column case sequence (from runner log)"
             echo '```'
-            grep -n -E "ai_column|RUN|OK|FAILED|RETRY" /tmp/mt_run.log 2>/dev/null | grep -B2 -A2 "ai_column" | head -60
+            grep -n -E "\[ *(RUN|OK|FAILED|RETRY) *\]" /tmp/mt_run.log 2>/dev/null | head -80
             echo '```'
             echo "## failure logs and rejects"
             FOUND=$(find "$TASK_DIR" \( -name '*.reject' -o -name 'mysqltest.log' \) 2>/dev/null)
