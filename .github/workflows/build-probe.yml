@@ -106,7 +106,7 @@ jobs:
           ccache -s | head -10
           true
 
-      - name: Run ai_column mysqltest suite
+      - name: Run full mysqltest suite
         shell: bash
         if: always()
         run: |
@@ -116,19 +116,9 @@ jobs:
             echo "observer binary missing, skip mysqltest"
             exit 0
           fi
-          find tools/deploy/mysql_test/t -name '*.test' -delete 2>/dev/null || true
-          find tools/deploy/mysql_test/test_suite -name '*.test' ! -path '*ai_column*' -delete
-          python3 - <<'EOF'
-          import re
-          path = 'tools/deploy/mysqltest_config.yaml'
-          text = open(path).read()
-          text = re.sub(r'(exclude-set:\n)(?:[ \t]+[^\n]*\n)*', r'\1', text)
-          open(path, 'w').write(text)
-          EOF
-          echo "--- config after cleaning ---"
-          head -12 tools/deploy/mysqltest_config.yaml
-          echo "remaining .test files:"
-          find tools/deploy/mysql_test -name '*.test'
+          echo "--- config (full blacklist-mode suite, judge-equivalent) ---"
+          head -20 tools/deploy/mysqltest_config.yaml
+          echo "total .test files: $(find tools/deploy/mysql_test -name '*.test' | wc -l)"
           RUNTIME_DIR=/tmp/seekdb_runtime
           TASK_DIR=/tmp/mt_task
           rm -rf "$RUNTIME_DIR" "$TASK_DIR"
@@ -141,9 +131,9 @@ jobs:
           export SEEKDB_BINARY="$RUNTIME_DIR/seekdb"
           export SLICE_IDX=0 SLICES=1
           chmod +x .github/script/seekdb/mysqltest_slice.sh
-          timeout -k 60 4200 .github/script/seekdb/mysqltest_slice.sh > /tmp/mt_run.log 2>&1
+          timeout -k 60 7200 .github/script/seekdb/mysqltest_slice.sh > /tmp/mt_run.log 2>&1
           echo "runner exit $?"
-          tail -n 50 /tmp/mt_run.log
+          tail -n 60 /tmp/mt_run.log
           mkdir -p /tmp/out
           cp /tmp/mt_run.log /tmp/out/ 2>/dev/null
 
@@ -156,7 +146,11 @@ jobs:
           {
             echo "## mysqltest seekdb_result.json"
             echo '```'
-            head -c 4000 "$TASK_DIR/seekdb_result.json" 2>/dev/null
+            head -c 6000 "$TASK_DIR/seekdb_result.json" 2>/dev/null
+            echo '```'
+            echo "## ai_column case sequence (from runner log)"
+            echo '```'
+            grep -n -E "ai_column|RUN|OK|FAILED|RETRY" /tmp/mt_run.log 2>/dev/null | grep -B2 -A2 "ai_column" | head -60
             echo '```'
             echo "## failure logs and rejects"
             FOUND=$(find "$TASK_DIR" \( -name '*.reject' -o -name 'mysqltest.log' \) 2>/dev/null)
@@ -171,19 +165,21 @@ jobs:
               done <<< "$FOUND"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-          LOGDIR=$(find /tmp/mt_task/instance -maxdepth 3 -type d -name log 2>/dev/null | head -1)
-          if [[ -n "$LOGDIR" ]]; then
+          mkdir -p /tmp/out/observer_log
+          for d in "$TASK_DIR"/failures/*/instance/seekdb_log "$TASK_DIR"/failures/instance/seekdb_log; do
+            [[ -d "$d" ]] || continue
+            case_tag=$(basename "$(dirname "$(dirname "$d")")")
             {
-              echo "## observer log: retry failure evidence"
+              echo "## observer log evidence: $case_tag"
               echo '```'
-              grep -h -E "ret=-4014|failed to retry ai column|failed to select retry rows|failed to invalidate ai column result|failed to queue ai column retry|failed to start transaction|failed to commit ai column retry" "$LOGDIR"/*.log 2>/dev/null | head -60
+              grep -h -E "ret=-4014|CRASH|SIGSEGV|SIGABRT|coredump|failed to retry ai column|failed to get table schema|OB_INNER_STAT_ERROR|ai_column" "$d"/*.log* 2>/dev/null | tail -40
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
-            mkdir -p /tmp/out/observer_log
-            for f in "$LOGDIR"/*.log; do
-              tail -c 3000000 "$f" > "/tmp/out/observer_log/$(basename "$f")" 2>/dev/null
+            for f in "$d"/*; do
+              [[ -f "$f" ]] || continue
+              tail -c 2000000 "$f" > "/tmp/out/observer_log/${case_tag}__$(basename "$f")" 2>/dev/null
             done
-          fi
+          done
           mkdir -p /tmp/out
           find "$TASK_DIR" \( -name '*.reject' -o -name 'mysqltest.log' \) -exec cp --parents {} /tmp/out/ \; 2>/dev/null
           mkdir -p /tmp/out/mysqltest_log

@@ -422,10 +422,20 @@ def copy_instance_diagnostics(base_dir, destination):
     destination.mkdir(parents=True, exist_ok=True)
     log_dir = base_dir / "log"
     if log_dir.is_dir():
-        try:
-            shutil.copytree(str(log_dir), str(destination / "seekdb_log"))
-        except OSError as exc:
-            print("warning: failed to copy seekdb logs: {}".format(exc), file=sys.stderr)
+        seekdb_log = destination / "seekdb_log"
+        seekdb_log.mkdir(parents=True, exist_ok=True)
+        for log_file in sorted(log_dir.iterdir()):
+            if not log_file.is_file():
+                continue
+            try:
+                size = log_file.stat().st_size
+                with log_file.open("rb") as source:
+                    if size > 8 * 1024 * 1024:
+                        source.seek(size - 8 * 1024 * 1024)
+                    payload = source.read()
+                (seekdb_log / log_file.name).write_bytes(payload)
+            except OSError as exc:
+                print("warning: failed to copy seekdb logs: {}".format(exc), file=sys.stderr)
 
     core_dir = destination / "core"
     copied = set()
@@ -448,7 +458,7 @@ def save_case_failure(args, case_name, output):
     destination = args.work_dir / "failures" / case_name
     destination.mkdir(parents=True, exist_ok=True)
     (destination / "mysqltest.log").write_text(output, encoding="utf-8")
-    save_instance_diagnostics(args)
+    copy_instance_diagnostics(args.base_dir, destination / "instance")
 
 
 def save_instance_diagnostics(args):
