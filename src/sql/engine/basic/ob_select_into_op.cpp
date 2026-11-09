@@ -38,7 +38,7 @@ OB_SERIALIZE_MEMBER(ObSelectIntoOpInput, task_id_, sqc_id_);
 OB_SERIALIZE_MEMBER((ObSelectIntoSpec, ObOpSpec), into_type_, user_vars_, outfile_name_,
     field_str_, line_str_, closed_cht_, is_optional_, select_exprs_, is_single_, max_file_size_,
     escaped_cht_, cs_type_, parallel_, buffer_size_, is_overwrite_,
-    external_properties_);
+    external_properties_, header_names_);
 
 
 int ObSelectIntoOp::inner_open()
@@ -129,6 +129,7 @@ void ObSelectIntoOp::set_csv_format_options()
     cs_type_ = MY_SPEC.cs_type_;
   } else {
     is_optional_ = external_properties_.csv_format_.is_optional_;
+    null_str_ = external_properties_.csv_format_.null_string_;
     cs_type_ = ObCharset::get_default_collation(external_properties_.csv_format_.cs_type_);
     field_str_.set_varchar(external_properties_.csv_format_.field_term_str_);
     field_str_.set_collation_type(cs_type_);
@@ -929,7 +930,12 @@ int ObSelectIntoOp::print_field(const ObObj &obj, ObCsvFileWriter &data_writer)
   if (need_enclose) {
     OZ(write_single_char_to_file(&char_enclose_, data_writer));
   }
-  if (!has_escape_) {
+  if (obj.is_null() && !null_str_.empty()) {
+    ObObj null_obj;
+    null_obj.set_varchar(null_str_);
+    null_obj.set_collation_type(cs_type_);
+    OZ(write_obj_to_file(null_obj, data_writer, false));
+  } else if (!has_escape_) {
     OZ(write_obj_to_file(obj, data_writer, false));
   } else if (obj.is_null()) {
     OZ(write_single_char_to_file(&char_escape_, data_writer));
@@ -1245,6 +1251,36 @@ int ObSelectIntoOp::create_the_only_data_writer(ObExternalFileWriter *&data_writ
     csv_data_writer = static_cast<ObCsvFileWriter*>(data_writer);
     if (OB_FAIL(csv_data_writer->alloc_buf(ctx_.get_allocator(), MY_SPEC.buffer_size_))) {
     }
+  }
+  if (OB_SUCC(ret) && NULL != csv_data_writer && !header_written_
+      && external_properties_.csv_format_.with_header_) {
+    if (OB_FAIL(write_header_csv(*csv_data_writer))) {
+      LOG_WARN("failed to write csv header", K(ret));
+    } else {
+      header_written_ = true;
+    }
+  }
+  return ret;
+}
+
+int ObSelectIntoOp::write_header_csv(ObCsvFileWriter &data_writer)
+{
+  int ret = OB_SUCCESS;
+  ObObj obj;
+  for (int64_t i = 0; OB_SUCC(ret) && i < MY_SPEC.header_names_.count(); ++i) {
+    obj.reset();
+    obj.set_varchar(MY_SPEC.header_names_.at(i));
+    obj.set_collation_type(cs_type_);
+    if (OB_FAIL(write_obj_to_file(obj, data_writer, false))) {
+      LOG_WARN("failed to write header field", K(i), K(ret));
+    } else if (i != MY_SPEC.header_names_.count() - 1
+               && OB_FAIL(write_obj_to_file(field_str_, data_writer))) {
+      LOG_WARN("failed to write header field terminator", K(ret));
+    }
+  }
+  if (OB_SUCC(ret) && MY_SPEC.header_names_.count() > 0
+      && OB_FAIL(write_obj_to_file(line_str_, data_writer))) {
+    LOG_WARN("failed to write header line terminator", K(ret));
   }
   return ret;
 }

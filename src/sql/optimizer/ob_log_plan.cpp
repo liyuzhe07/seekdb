@@ -32,6 +32,7 @@
 #include "sql/optimizer/ob_log_select_into.h"
 #include "sql/optimizer/ob_log_expr_values.h"
 #include "sql/optimizer/ob_log_function_table.h"
+#include "sql/optimizer/ob_log_file_scan.h"
 #include "sql/optimizer/ob_log_json_table.h"
 #include "sql/rewrite/ob_transform_utils.h"
 #include "sql/optimizer/ob_log_exchange.h"
@@ -2251,6 +2252,38 @@ int ObLogPlan::allocate_function_table_path(FunctionTablePath *func_table_path,
   return ret;
 }
 
+int ObLogPlan::allocate_file_table_path(FileTablePath *file_table_path,
+                                        ObLogicalOperator *&out_access_path_op)
+{
+  int ret = OB_SUCCESS;
+  ObLogFileScan *op = nullptr;
+  const TableItem *table_item = nullptr;
+  if (OB_ISNULL(file_table_path) || OB_ISNULL(get_stmt())
+      || OB_ISNULL(table_item = get_stmt()->get_table_item_by_id(file_table_path->table_id_))
+      || OB_ISNULL(table_item->file_table_def_)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("invalid file table path", K(ret), KP(file_table_path), KP(table_item));
+  } else if (OB_ISNULL(op = static_cast<ObLogFileScan *>(
+                         get_log_op_factory().allocate(*this, LOG_FILE_SCAN)))) {
+    ret = OB_ALLOCATE_MEMORY_FAILED;
+    LOG_WARN("failed to allocate file scan operator", K(ret));
+  } else {
+    op->set_table_id(file_table_path->table_id_);
+    op->set_table_name(table_item->get_table_name());
+    op->set_file_table_def(table_item->file_table_def_);
+    if (OB_FAIL(append(op->get_filter_exprs(), file_table_path->filter_))) {
+      LOG_WARN("failed to append file filters", K(ret));
+    } else if (OB_FAIL(op->compute_property(file_table_path))) {
+      LOG_WARN("failed to compute file scan property", K(ret));
+    } else if (OB_FAIL(op->pick_out_startup_filters())) {
+      LOG_WARN("failed to pick file startup filters", K(ret));
+    } else {
+      out_access_path_op = op;
+    }
+  }
+  return ret;
+}
+
 int ObLogPlan::allocate_json_table_path(JsonTablePath *json_table_path,
                                         ObLogicalOperator *&out_access_path_op)
 {
@@ -3499,6 +3532,11 @@ int ObLogPlan::create_plan_tree_from_path(Path *path,
       FunctionTablePath *func_table_path = static_cast<FunctionTablePath *>(path);
       if (OB_FAIL(allocate_function_table_path(func_table_path, op))) {
       } else { /* Do nothing */ }
+    } else if (path->is_file_table_path()) {
+      FileTablePath *file_table_path = static_cast<FileTablePath *>(path);
+      if (OB_FAIL(allocate_file_table_path(file_table_path, op))) {
+        LOG_WARN("failed to allocate file table path", K(ret));
+      }
     } else if (path->is_json_table_path()) {
       JsonTablePath *json_table_path = static_cast<JsonTablePath *>(path);
       if (OB_FAIL(allocate_json_table_path(json_table_path, op))) {
@@ -6830,6 +6868,21 @@ int ObLogPlan::allocate_select_into_as_top(ObLogicalOperator *&old_top)
       select_into->set_escaped_cht(into_item->escaped_cht_);
       select_into->set_cs_type(into_item->cs_type_);
       select_into->set_external_properties(into_item->external_properties_);
+      if (OB_SUCC(ret)) {
+        ObSEArray<common::ObString, 16> header_names;
+        for (int64_t i = 0; OB_SUCC(ret) && i < stmt->get_select_item_size(); ++i) {
+          const SelectItem &select_item = stmt->get_select_item(i);
+          const ObString &col_name = select_item.alias_name_.empty()
+                                     ? select_item.expr_name_ : select_item.alias_name_;
+          if (OB_FAIL(header_names.push_back(col_name))) {
+            LOG_WARN("failed to push header name", K(ret));
+          }
+        }
+        if (OB_FAIL(ret)) {
+        } else if (OB_FAIL(select_into->set_header_names(header_names))) {
+          LOG_WARN("failed to set header names", K(ret));
+        }
+      }
       select_into->set_child(ObLogicalOperator::first_child, old_top);
       // compute property
       if (OB_FAIL(select_into->compute_property())) {
