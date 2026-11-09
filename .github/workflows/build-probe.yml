@@ -147,6 +147,77 @@ jobs:
           mkdir -p /tmp/out
           cp /tmp/mt_run.log /tmp/out/ 2>/dev/null
 
+      - name: Repeat ai_column_ddl cold-start probe (strict, no retry)
+        shell: bash
+        if: always()
+        run: |
+          set +e
+          BINARY=build_release/src/observer/seekdb
+          N=25
+          {
+            echo "## ai_column_ddl cold-start flakiness probe (strict, MAX_RETRIES=0, ${N} runs)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ ! -x "$BINARY" ]]; then
+            echo 'observer binary missing, probe skipped' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # Keep only ai_column_ddl so every iteration runs ddl first on a freshly prepared observer.
+          find tools/deploy/mysql_test -name '*.test' -not -name 'ai_column_ddl.test' -delete
+          find tools/deploy/mysql_test -name '*.result' -not -name 'ai_column_ddl.result' -delete
+          echo "remaining .test: $(find tools/deploy/mysql_test -name '*.test' | wc -l)"
+          export GITHUB_WORKSPACE="$PWD"
+          export SEEKDB_STRICT_RESULT=1
+          export SEEKDB_MAX_RETRIES=0
+          export SLICE_IDX=0 SLICES=1
+          RUNTIME_DIR=/tmp/seekdb_runtime
+          TASK_DIR=/tmp/mt_task
+          mkdir -p "$RUNTIME_DIR/obclient" "$TASK_DIR"
+          cp -L -f "$BINARY" "$RUNTIME_DIR/seekdb" 2>/dev/null
+          [[ -d deps/3rd/u01/obclient ]] && cp -a deps/3rd/u01/obclient/. "$RUNTIME_DIR/obclient/" 2>/dev/null
+          export SEEKDB_TASK_DIR="$TASK_DIR"
+          export SEEKDB_RUNTIME_DIR="$RUNTIME_DIR"
+          export SEEKDB_BINARY="$RUNTIME_DIR/seekdb"
+          chmod +x .github/script/seekdb/mysqltest_slice.sh
+          OK=0; FAIL=0; FIRST_FAIL=0
+          mkdir -p /tmp/out/flaky
+          for i in $(seq 1 $N); do
+            timeout -k 60 600 .github/script/seekdb/mysqltest_slice.sh > /tmp/mt_iter_$i.log 2>&1
+            rc=$?
+            if grep -q "\[  FAILED  \] ai_column.ai_column_ddl" /tmp/mt_iter_$i.log || grep -q '"failed_cases": *\["ai_column.ai_column_ddl"' "$TASK_DIR/seekdb_result.json" 2>/dev/null; then
+              FAIL=$((FAIL+1)); [ "$FIRST_FAIL" -eq 0 ] && FIRST_FAIL=$i
+              cp /tmp/mt_iter_$i.log /tmp/out/flaky/fail_iter_$i.log 2>/dev/null
+              find "$TASK_DIR" -name 'ai_column_ddl.reject' -exec cp {} /tmp/out/flaky/fail_iter_${i}_reject.txt \; 2>/dev/null
+              find "$TASK_DIR/failures" -name 'mysqltest.log' -exec cp {} /tmp/out/flaky/fail_iter_${i}_mysqltest.log \; 2>/dev/null
+              echo "iteration $i: FAILED"
+            elif grep -q "\[       OK \] ai_column.ai_column_ddl" /tmp/mt_iter_$i.log; then
+              OK=$((OK+1)); echo "iteration $i: OK"
+            else
+              FAIL=$((FAIL+1)); [ "$FIRST_FAIL" -eq 0 ] && FIRST_FAIL=$i
+              cp /tmp/mt_iter_$i.log /tmp/out/flaky/fail_iter_$i.log 2>/dev/null
+              echo "iteration $i: NO-OK (rc=$rc)"
+            fi
+          done
+          echo "PROBE TALLY: attempts=$N ok=$OK failed=$FAIL first_fail_iter=$FIRST_FAIL"
+          {
+            echo ""
+            echo "TALLY: attempts=${N} ok=${OK} failed=${FAIL} first_fail_iter=${FIRST_FAIL}"
+            if [[ "$FIRST_FAIL" -gt 0 ]]; then
+              echo "### FIRST FAILURE diff (reject vs expected)"
+              echo '```'
+              REJ=$(find /tmp/out/flaky -name "fail_iter_${FIRST_FAIL}_reject.txt" | head -1)
+              if [[ -n "$REJ" && -f "$REJ" ]]; then
+                diff -u tools/deploy/mysql_test/test_suite/ai_column/r/mysql/ai_column_ddl.result "$REJ" | head -120
+              else
+                echo "(no reject captured) tail of iter log:"
+                tail -n 60 /tmp/mt_iter_${FIRST_FAIL}.log
+              fi
+              echo '```'
+            else
+              echo "ai_column_ddl passed all ${N} cold-start runs under strict mode, no retry -> not flaky."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          true
+
       - name: Write mysqltest report
         shell: bash
         if: always()
