@@ -14866,6 +14866,7 @@ opt_ai_retry_where_clause:
 }
 | WHERE expr
 {
+  (void)($2);
   ParseNode *predicate_node = NULL;
   malloc_terminal_node(predicate_node, result->malloc_pool_, T_VARCHAR);
   // The predicate is kept verbatim so the executor can replay it against the

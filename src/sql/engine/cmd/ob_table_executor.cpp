@@ -778,9 +778,12 @@ int ObAlterTableExecutor::execute(ObExecContext &ctx, ObAlterTableStmt &stmt)
     const uint64_t table_id = alter_table_arg.alter_table_schema_.get_table_id();
     ObSchemaGetterGuard *schema_guard = ctx.get_sql_ctx()->schema_guard_;
     const ObTableSchema *table_schema = NULL;
-    if (OB_ISNULL(schema_guard)) {
+    if (OB_ISNULL(schema_guard) || OB_ISNULL(ctx.get_sql_exec_ctx().schema_service_)) {
       ret = OB_ERR_UNEXPECTED;
       LOG_WARN("schema guard is null", K(ret));
+    } else if (OB_FAIL(ctx.get_sql_exec_ctx().schema_service_->get_runtime_schema_guard(*schema_guard))) {
+      // ObCmdExecutor resets this guard before DDL execution to release the schema slot.
+      LOG_WARN("failed to get runtime schema guard", K(ret), K(table_id));
     } else if (OB_FAIL(schema_guard->get_table_schema(table_id, table_schema))) {
       LOG_WARN("failed to get table schema", K(ret), K(table_id));
     } else if (OB_ISNULL(table_schema)) {
